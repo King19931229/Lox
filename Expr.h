@@ -8,6 +8,31 @@ struct Expr
 };
 typedef std::shared_ptr<Expr> ExprPtr;
 
+struct Ternary;
+typedef std::shared_ptr<Ternary> TernaryPtr;
+
+struct Ternary : public Expr
+{
+	ExprPtr left;
+	Token opLeft;
+	ExprPtr middle;
+	Token opRight;
+	ExprPtr right;
+	
+	Ternary(const ExprPtr& inLeft, const Token& inOpLeft, const ExprPtr& inMiddle, const Token& inOpRight, const ExprPtr& inRight)
+	{
+		this->left = inLeft;
+		this->opLeft = inOpLeft;
+		this->middle = inMiddle;
+		this->opRight = inOpRight;
+		this->right = inRight;
+	}
+	
+	static TernaryPtr Create(const ExprPtr& inLeft, const Token& inOpLeft, const ExprPtr& inMiddle, const Token& inOpRight, const ExprPtr& inRight)
+	{
+		return std::make_shared<Ternary>(inLeft, inOpLeft, inMiddle, inOpRight, inRight);
+	}
+};
 struct Binary;
 typedef std::shared_ptr<Binary> BinaryPtr;
 
@@ -19,12 +44,16 @@ struct Binary : public Expr
 	
 	Binary(const ExprPtr& inLeft, const Token& inOp, const ExprPtr& inRight)
 	{
-		left = inLeft;
-		op = inOp;
-		right = inRight;
+		this->left = inLeft;
+		this->op = inOp;
+		this->right = inRight;
+	}
+	
+	static BinaryPtr Create(const ExprPtr& inLeft, const Token& inOp, const ExprPtr& inRight)
+	{
+		return std::make_shared<Binary>(inLeft, inOp, inRight);
 	}
 };
-
 struct Grouping;
 typedef std::shared_ptr<Grouping> GroupingPtr;
 
@@ -34,10 +63,14 @@ struct Grouping : public Expr
 	
 	Grouping(const ExprPtr& inExpression)
 	{
-		expression = inExpression;
+		this->expression = inExpression;
+	}
+	
+	static GroupingPtr Create(const ExprPtr& inExpression)
+	{
+		return std::make_shared<Grouping>(inExpression);
 	}
 };
-
 struct Literal;
 typedef std::shared_ptr<Literal> LiteralPtr;
 
@@ -47,10 +80,14 @@ struct Literal : public Expr
 	
 	Literal(const Lexeme& inValue)
 	{
-		value = inValue;
+		this->value = inValue;
+	}
+	
+	static LiteralPtr Create(const Lexeme& inValue)
+	{
+		return std::make_shared<Literal>(inValue);
 	}
 };
-
 struct Unary;
 typedef std::shared_ptr<Unary> UnaryPtr;
 
@@ -61,8 +98,12 @@ struct Unary : public Expr
 	
 	Unary(const Token& inOp, const ExprPtr& inRight)
 	{
-		op = inOp;
-		right = inRight;
+		this->op = inOp;
+		this->right = inRight;
+	}
+	
+	static UnaryPtr Create(const Token& inOp, const ExprPtr& inRight)
+	{
+		return std::make_shared<Unary>(inOp, inRight);
 	}
 };
-

@@ -20,6 +20,8 @@
 	TOKEN(SLASH,          "/")      /* / */ \
 	TOKEN(STAR,           "*")      /* * */ \
 	TOKEN(BANG,           "!")      /* ! */ \
+	TOKEN(QUESTION,	      "?")      /* ? */ \
+	TOKEN(COLON,		  ":")      /* : */ \
 	TOKEN(BANG_EQUAL,     "!=")     /* != */ \
 	TOKEN(EQUAL,          "=")      /* = */ \
 	TOKEN(EQUAL_EQUAL,    "==")     /* == */ \
@@ -46,7 +48,8 @@
 	TOKEN(TRUE,           "true")        /* true */ \
 	TOKEN(VAR,            "var")         /* var */ \
 	TOKEN(WHILE,          "while")       /* while */ \
-	TOKEN(END_OF_FILE,    "EOF")         /* end of file */
+	TOKEN(END_OF_FILE,    "EOF")         /* end of file */ \
+	TOKEN(ERROR,          "ERROR")       /* error */
 
 enum TokenType
 {
@@ -77,7 +80,7 @@ struct Token
 	{
 		line = 0;
 		column = 0;
-		type = END_OF_FILE;
+		type = ERROR;
 	}
 
 	Token(TokenType inType, Lexeme inLexeme, size_t inIine, size_t inColumn)

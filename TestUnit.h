@@ -2,5 +2,6 @@
 
 struct TestUnit
 {
-	static void RunTokensTest();
+	static void RunScannerTest();
+	static void RunExpressionParserTest();
 };

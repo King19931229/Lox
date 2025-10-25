@@ -133,6 +133,7 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 		std::string namePart = Util::Trim(field.substr(sep + 1));
 		if (typePart.empty() || namePart.empty()) continue;
 
+		// 成员类型：Token/Lexeme 保持原样，其它类型追加 Ptr
 		std::string memberType = (typePart == "Token" || typePart == "Lexeme") ? typePart : (typePart + "Ptr");
 
 		typeList.push_back(memberType);
@@ -141,7 +142,7 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 		writer.WriteLine("%s %s;", memberType.c_str(), namePart.c_str());
 	}
 
-	// 构造函数，构造列表就是上述成员
+	// 构造函数：参数名加 in 前缀，函数体内赋值（不使用成员初始化列表）
 	writer.WriteLine("");
 	if (!nameList.empty())
 	{
@@ -155,33 +156,53 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 				if (n.size() > 1) res += n.substr(1);
 			}
 			return res;
-			};
+		};
 
 		std::string paramList;
+		std::string assignList; // 用于构造函数体赋值
+		std::string argList;    // 用于 Create 调用构造函数
+
 		for (size_t i = 0; i < nameList.size(); ++i)
 		{
-			if (i > 0) paramList += ", ";
 			const std::string inName = MakeInName(nameList[i]);
+
+			if (i > 0) {
+				paramList += ", ";
+				argList += ", ";
+			}
+
 			paramList += "const " + typeList[i] + "& " + inName;
+			argList += inName;
 		}
 
+		// 构造函数签名
 		writer.WriteLine("%s(%s)", className.c_str(), paramList.c_str());
 		writer.EnterScope();
 		for (size_t i = 0; i < nameList.size(); ++i)
 		{
 			const std::string inName = MakeInName(nameList[i]);
-			writer.WriteLine("%s = %s;", nameList[i].c_str(), inName.c_str());
+			writer.WriteLine("this->%s = %s;", nameList[i].c_str(), inName.c_str());
 		}
+		writer.ExitScope();
+
+		// 生成静态工厂方法 Create
+		writer.WriteLine("");
+		writer.WriteLine("static %sPtr Create(%s)", className.c_str(), paramList.c_str());
+		writer.EnterScope();
+		writer.WriteLine("return std::make_shared<%s>(%s);", className.c_str(), argList.c_str());
 		writer.ExitScope();
 	}
 	else
 	{
-		// 无字段则生成默认构造
+		// 无字段则生成默认构造与无参 Create
 		writer.WriteLine("%s() {}", className.c_str());
+		writer.WriteLine("");
+		writer.WriteLine("static %sPtr Create()", className.c_str());
+		writer.EnterScope();
+		writer.WriteLine("return std::make_shared<%s>();", className.c_str());
+		writer.ExitScope();
 	}
 
 	writer.ExitDefineScope();
-	writer.WriteLine("");
-
 	return writer.GetResult();
 }
