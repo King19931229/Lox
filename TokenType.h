@@ -67,11 +67,9 @@ static const char* const TokenTypeName[] =
 
 #undef TOKEN_TYPE_LIST
 
-typedef std::string Lexeme;
-
 struct Token
 {
-	Lexeme lexeme;
+	std::string lexeme;
 	size_t line;
 	size_t column;
 	TokenType type;
@@ -83,7 +81,7 @@ struct Token
 		type = ERROR;
 	}
 
-	Token(TokenType inType, Lexeme inLexeme, size_t inIine, size_t inColumn)
+	Token(TokenType inType, std::string inLexeme, size_t inIine, size_t inColumn)
 	{
 		lexeme = inLexeme;
 		type = inType;

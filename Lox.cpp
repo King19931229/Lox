@@ -97,8 +97,25 @@ void Lox::Error(size_t line, size_t column, const char* fmt, ...)
 	Report(line, column, "", buffer);
 }
 
+void Lox::RuntimeError(const char* fmt, ...)
+{
+	char buffer[1024];
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(buffer, sizeof(buffer), fmt, args);
+	va_end(args);
+	Report(0, 0, " Runtime", buffer);
+}
+
 void Lox::Report(size_t line, size_t column, const char* where, const char* message)
 {
-	printf("[%zd:%zd] Error%s: %s\n", line, column, where, message);
+	if (line != 0 && column != 0)
+	{
+		printf("[%zd:%zd] Error%s: %s\n", line, column, where, message);
+	}
+	else
+	{
+		printf("%s: %s\n", where, message);
+	}
 	hadError = true;
 }

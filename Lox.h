@@ -24,4 +24,5 @@ protected:
 	void Report(size_t line, size_t column, const char* where, const char* message);
 public:
 	void Error(size_t line, size_t column, const char* fmt, ...);
+	void RuntimeError(const char* fmt, ...);
 };

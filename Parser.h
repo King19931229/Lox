@@ -9,12 +9,12 @@ protected:
 	size_t current;
 	bool error;
 
-	inline bool IsAtEnd()
+	inline bool IsAtEnd() const
 	{
 		return current >= tokens.size();
 	}
 
-	inline bool Check(TokenType type)
+	inline bool Check(TokenType type) const
 	{
 		if (IsAtEnd()) return false;
 		return tokens[current].type == type;
@@ -32,7 +32,7 @@ protected:
 		return tokens[current - 1];
 	}
 
-	inline Token Peek()
+	inline Token Peek() const
 	{
 		if (IsAtEnd()) return Token();
 		return tokens[current];
@@ -67,6 +67,11 @@ protected:
 public:
 	Parser(const std::vector<Token>& inTokens);
 	~Parser();
+
+	inline bool HasError() const
+	{
+		return error;
+	}
 
 	ExprPtr Parse();
 };

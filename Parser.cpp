@@ -186,22 +186,9 @@ ExprPtr Parser::Unary()
 
 ExprPtr Parser::Primary()
 {
-	if (Match(TokenType::FALSE))
+	if (Match(TokenType::FALSE, TokenType::TRUE, TokenType::NIL, TokenType::NUMBER, TokenType::STRING))
 	{
-		return Literal::Create(Lexeme("false"));
-	}
-	if (Match(TokenType::TRUE))
-	{
-		return Literal::Create(Lexeme("true"));
-	}
-	if (Match(TokenType::NIL))
-	{
-		return Literal::Create(Lexeme("nil"));
-	}
-
-	if (Match(TokenType::NUMBER, TokenType::STRING))
-	{
-		return Literal::Create(Previous().lexeme);
+		return Literal::Create(Previous());
 	}
 
 	if (Match(TokenType::LEFT_PAREN))

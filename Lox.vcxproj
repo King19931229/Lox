@@ -154,11 +154,13 @@
     <ClInclude Include="Expr.h" />
     <ClInclude Include="Expr.template.h" />
     <ClInclude Include="GenerateAST.h" />
+    <ClInclude Include="Interpreter.h" />
     <ClInclude Include="Lox.h" />
     <ClInclude Include="Parser.h" />
     <ClInclude Include="Scanner.h" />
     <ClInclude Include="TestUnit.h" />
     <ClInclude Include="Util.h" />
+    <ClInclude Include="Value.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

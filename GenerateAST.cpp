@@ -56,6 +56,62 @@ private:
 	std::string indentStr;
 };
 
+// 新增：生成 Visitor 接口和模板类的代码
+std::string GenerateVisitorBody(const std::string& baseName, const std::vector<std::string>& types)
+{
+	ContentWriter writer;
+
+	// 1. 生成所有 Expr 子类的前向声明
+	for (const std::string& type : types)
+	{
+		std::string className = Util::Trim(type.substr(0, type.find(':')));
+		writer.WriteLine("struct %s;", className.c_str());
+	}
+	writer.WriteLine("struct %s;", baseName.c_str());
+	writer.WriteLine("");
+
+	// 2. 生成 IVisitor 接口
+	writer.WriteLine("struct IVisitor");
+	writer.EnterScope();
+	writer.WriteLine("virtual ~IVisitor() = default;");
+	for (const std::string& type : types)
+	{
+		std::string className = Util::Trim(type.substr(0, type.find(':')));
+		writer.WriteLine("virtual void Visit%s%s(const %s* expr) = 0;", className.c_str(), baseName.c_str(), className.c_str());
+	}
+	writer.ExitDefineScope();
+	writer.WriteLine("");
+
+	// 3. 生成 Visitor<R> 模板类
+	writer.WriteLine("template<typename R>");
+	writer.WriteLine("struct Visitor : public IVisitor");
+	writer.EnterScope();
+	writer.WriteLine("R result; // 用于存储访问结果");
+	writer.WriteLine("");
+	writer.WriteLine("R Visit(const %s* expr);", baseName.c_str());
+	writer.WriteLine("");
+
+	// 生成 Visit... 方法的 override
+	for (const std::string& type : types)
+	{
+		std::string className = Util::Trim(type.substr(0, type.find(':')));
+		writer.WriteLine("void Visit%s%s(const %s* expr) override { result = DoVisit%s%s(expr); }",
+			className.c_str(), baseName.c_str(), className.c_str(), className.c_str(), baseName.c_str());
+	}
+	writer.WriteLine("");
+	writer.WriteLine("protected:");
+
+	// 生成纯虚的 DoVisit... 方法
+	for (const std::string& type : types)
+	{
+		std::string className = Util::Trim(type.substr(0, type.find(':')));
+		writer.WriteLine("virtual R DoVisit%s%s(const %s* expr) = 0;", className.c_str(), baseName.c_str(), className.c_str());
+	}
+	writer.ExitDefineScope();
+
+	return writer.GetResult();
+}
+
 void GenerateAST::DefineAST(const std::string& outputDir, const std::string& baseName, const std::vector<std::string>& types)
 {
 	std::string templatePath = outputDir + "/" + baseName + ".template.h";
@@ -74,29 +130,35 @@ void GenerateAST::DefineAST(const std::string& outputDir, const std::string& bas
 	fread(&contents[0], 1, size, file);
 	fclose(file);
 
-	std::string defineBody;
+	// --- 主要修改：生成并替换两个占位符 ---
+
+	// 1. 生成 Visitor 定义
+	std::string visitorBody = GenerateVisitorBody(baseName, types);
+	size_t visitorPos = contents.find("$(VISITOR_DEFINE_BODY)");
+	if (visitorPos != std::string::npos)
+	{
+		contents.replace(visitorPos, sizeof("$(VISITOR_DEFINE_BODY)") - 1, visitorBody);
+	}
+
+	// 2. 生成 Expr 结构体定义
+	std::string exprBody;
 	for (const std::string& type : types)
 	{
 		size_t colonPos = type.find(':');
 		if (colonPos == std::string::npos) continue;
-		std::string className = type.substr(0, colonPos);
-		std::string fields = type.substr(colonPos + 1);
+		std::string className = Util::Trim(type.substr(0, colonPos));
+		std::string fields = Util::Trim(type.substr(colonPos + 1));
 
-		className.erase(0, className.find_first_not_of(" \t\r\n"));
-		className.erase(className.find_last_not_of(" \t\r\n") + 1);
-		fields.erase(0, fields.find_first_not_of(" \t\r\n"));
-		fields.erase(fields.find_last_not_of(" \t\r\n") + 1);
-
-		defineBody += DefineType(baseName, className, fields);
+		exprBody += DefineType(baseName, className, fields);
 	}
 
-	size_t pos = 0;
-	const std::string placeholder = "$(EXPR_DEFINE_BODY)";
-	while ((pos = contents.find(placeholder, pos)) != std::string::npos)
+	size_t exprPos = contents.find("$(EXPR_DEFINE_BODY)");
+	if (exprPos != std::string::npos)
 	{
-		contents.replace(pos, placeholder.length(), defineBody);
-		pos += defineBody.length();
+		contents.replace(exprPos, sizeof("$(EXPR_DEFINE_BODY)") - 1, exprBody);
 	}
+
+	// --- 修改结束 ---
 
 	std::string outputPath = outputDir + "/" + baseName + ".h";
 	if (fopen_s(&file, outputPath.c_str(), "wb") != 0 || !file)
@@ -106,6 +168,7 @@ void GenerateAST::DefineAST(const std::string& outputDir, const std::string& bas
 	}
 
 	fwrite(contents.data(), 1, contents.size(), file);
+	fclose(file);
 }
 
 
@@ -202,6 +265,12 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 		writer.WriteLine("return std::make_shared<%s>();", className.c_str());
 		writer.ExitScope();
 	}
+
+	writer.WriteLine("");
+	writer.WriteLine("void Accept(IVisitor& visitor) const override");
+	writer.EnterScope();
+	writer.WriteLine("visitor.Visit%s%s(this);", className.c_str(), baseName.c_str());
+	writer.ExitScope();
 
 	writer.ExitDefineScope();
 	return writer.GetResult();
