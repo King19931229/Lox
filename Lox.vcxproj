@@ -140,6 +140,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="GenerateAST.cpp" />
+    <ClCompile Include="Interpreter.cpp" />
     <ClCompile Include="Lox.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Parser.cpp">
@@ -158,6 +159,8 @@
     <ClInclude Include="Lox.h" />
     <ClInclude Include="Parser.h" />
     <ClInclude Include="Scanner.h" />
+    <ClInclude Include="Stat.h" />
+    <ClInclude Include="Stat.template.h" />
     <ClInclude Include="TestUnit.h" />
     <ClInclude Include="Util.h" />
     <ClInclude Include="Value.h" />

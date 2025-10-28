@@ -1,10 +1,10 @@
 #pragma once
-#include "Scanner.h"
 
 class Lox
 {
 protected:
 	bool hadError = false;
+	bool hadRuntimeError = false;
 	static Lox* instance;
 	Lox();
 public:

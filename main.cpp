@@ -11,14 +11,18 @@ int main(int argc, char* argv[])
 	//Lox& lox = Lox::GetInstance();
 	//lox.Run(argc - 1, argc > 1 ? &argv[1] : nullptr);
 
-	/*GenerateAST generator;
-	generator.DefineAST("G:/Lox/", "Expr",
+	GenerateAST generator;
+	generator.DefineAST("D:/Lox/", "Expr",
 	{
 		"Ternary : Expr left, Token opLeft, Expr middle, Token opRight, Expr right",
 		"Binary : Expr left, Token op, Expr right",
 		"Grouping : Expr expression",
 		"Literal : Token value",
 		"Unary : Token op, Expr right"
-	});*/
+	});
+	generator.DefineAST("D:/Lox/", "Stat",
+	{
+	});
+
 	return 0;
 }

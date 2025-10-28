@@ -1,5 +1,7 @@
 #include "Lox.h"
 #include "Scanner.h"
+#include "Parser.h"
+#include "Interpreter.h"
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -62,6 +64,10 @@ void Lox::RunFile(const char* path)
 	{
 		exit(65);
 	}
+	if (hadRuntimeError)
+	{
+		exit(70);
+	}
 }
 
 void Lox::RunPrompt()
@@ -80,11 +86,13 @@ void Lox::Run(const char* source)
 {
 	Scanner scanner(source);
 	std::vector<Token> tokens = scanner.ScanTokens();
-	for (const Token& token : tokens)
-	{
-		printf("[LOG] Token: '%s' | type: %d | line: %zd\n", token.lexeme.c_str(), static_cast<int>(token.type), token.line);
-	}
-	printf("[LOG] Total tokens: %zu\n", tokens.size());
+	Parser parser(tokens);
+
+	ExprPtr expr = parser.Parse();
+	if (hadError) return;
+
+	Interpreter interpreter;
+	ValuePtr result = interpreter.Interpret(expr);
 }
 
 void Lox::Error(size_t line, size_t column, const char* fmt, ...)
@@ -95,6 +103,7 @@ void Lox::Error(size_t line, size_t column, const char* fmt, ...)
 	vsnprintf(buffer, sizeof(buffer), fmt, args);
 	va_end(args);
 	Report(line, column, "", buffer);
+	hadError = true;
 }
 
 void Lox::RuntimeError(const char* fmt, ...)
@@ -105,6 +114,7 @@ void Lox::RuntimeError(const char* fmt, ...)
 	vsnprintf(buffer, sizeof(buffer), fmt, args);
 	va_end(args);
 	Report(0, 0, " Runtime", buffer);
+	hadRuntimeError = true;
 }
 
 void Lox::Report(size_t line, size_t column, const char* where, const char* message)
@@ -117,5 +127,4 @@ void Lox::Report(size_t line, size_t column, const char* where, const char* mess
 	{
 		printf("%s: %s\n", where, message);
 	}
-	hadError = true;
 }

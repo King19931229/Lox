@@ -9,35 +9,35 @@ struct Literal;
 struct Unary;
 struct Expr;
 
-struct IVisitor
+struct IExprVisitor
 {
-	virtual ~IVisitor() = default;
-	virtual void VisitTernaryExpr(const Ternary* expr) = 0;
-	virtual void VisitBinaryExpr(const Binary* expr) = 0;
-	virtual void VisitGroupingExpr(const Grouping* expr) = 0;
-	virtual void VisitLiteralExpr(const Literal* expr) = 0;
-	virtual void VisitUnaryExpr(const Unary* expr) = 0;
+	virtual ~IExprVisitor() = default;
+	virtual void VisitTernaryExpr(const Ternary* Expr) = 0;
+	virtual void VisitBinaryExpr(const Binary* Expr) = 0;
+	virtual void VisitGroupingExpr(const Grouping* Expr) = 0;
+	virtual void VisitLiteralExpr(const Literal* Expr) = 0;
+	virtual void VisitUnaryExpr(const Unary* Expr) = 0;
 };
 
 template<typename R>
-struct Visitor : public IVisitor
+struct ExprVisitor : public IExprVisitor
 {
 	R result; // 用于存储访问结果
 	
-	R Visit(const Expr* expr);
+	R VisitExpr(const Expr* Expr);
 	
-	void VisitTernaryExpr(const Ternary* expr) override { result = DoVisitTernaryExpr(expr); }
-	void VisitBinaryExpr(const Binary* expr) override { result = DoVisitBinaryExpr(expr); }
-	void VisitGroupingExpr(const Grouping* expr) override { result = DoVisitGroupingExpr(expr); }
-	void VisitLiteralExpr(const Literal* expr) override { result = DoVisitLiteralExpr(expr); }
-	void VisitUnaryExpr(const Unary* expr) override { result = DoVisitUnaryExpr(expr); }
+	void VisitTernaryExpr(const Ternary* Expr) override { result = DoVisitTernaryExpr(Expr); }
+	void VisitBinaryExpr(const Binary* Expr) override { result = DoVisitBinaryExpr(Expr); }
+	void VisitGroupingExpr(const Grouping* Expr) override { result = DoVisitGroupingExpr(Expr); }
+	void VisitLiteralExpr(const Literal* Expr) override { result = DoVisitLiteralExpr(Expr); }
+	void VisitUnaryExpr(const Unary* Expr) override { result = DoVisitUnaryExpr(Expr); }
 	
 	protected:
-	virtual R DoVisitTernaryExpr(const Ternary* expr) = 0;
-	virtual R DoVisitBinaryExpr(const Binary* expr) = 0;
-	virtual R DoVisitGroupingExpr(const Grouping* expr) = 0;
-	virtual R DoVisitLiteralExpr(const Literal* expr) = 0;
-	virtual R DoVisitUnaryExpr(const Unary* expr) = 0;
+	virtual R DoVisitTernaryExpr(const Ternary* Expr) = 0;
+	virtual R DoVisitBinaryExpr(const Binary* Expr) = 0;
+	virtual R DoVisitGroupingExpr(const Grouping* Expr) = 0;
+	virtual R DoVisitLiteralExpr(const Literal* Expr) = 0;
+	virtual R DoVisitUnaryExpr(const Unary* Expr) = 0;
 };
 
 
@@ -45,13 +45,14 @@ struct Expr
 {
 	virtual ~Expr() = default;
 
-	// Accept 方法现在是非模板的，并且接受基接口的引用
-	virtual void Accept(IVisitor& visitor) const = 0;
+	// Accept 方法现在接受 IExprVisitor
+	virtual void Accept(IExprVisitor& visitor) const = 0;
 };
 typedef std::shared_ptr<Expr> ExprPtr;
 
+// Visitor -> ExprVisitor
 template<typename R>
-R Visitor<R>::Visit(const Expr* expr)
+R ExprVisitor<R>::VisitExpr(const Expr* expr)
 {
 	expr->Accept(*this);
 	return result;
@@ -82,7 +83,7 @@ struct Ternary : public Expr
 		return std::make_shared<Ternary>(inLeft, inOpLeft, inMiddle, inOpRight, inRight);
 	}
 	
-	void Accept(IVisitor& visitor) const override
+	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitTernaryExpr(this);
 	}
@@ -108,7 +109,7 @@ struct Binary : public Expr
 		return std::make_shared<Binary>(inLeft, inOp, inRight);
 	}
 	
-	void Accept(IVisitor& visitor) const override
+	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitBinaryExpr(this);
 	}
@@ -130,7 +131,7 @@ struct Grouping : public Expr
 		return std::make_shared<Grouping>(inExpression);
 	}
 	
-	void Accept(IVisitor& visitor) const override
+	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitGroupingExpr(this);
 	}
@@ -152,7 +153,7 @@ struct Literal : public Expr
 		return std::make_shared<Literal>(inValue);
 	}
 	
-	void Accept(IVisitor& visitor) const override
+	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitLiteralExpr(this);
 	}
@@ -176,7 +177,7 @@ struct Unary : public Expr
 		return std::make_shared<Unary>(inOp, inRight);
 	}
 	
-	void Accept(IVisitor& visitor) const override
+	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitUnaryExpr(this);
 	}

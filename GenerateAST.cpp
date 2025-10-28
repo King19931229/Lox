@@ -56,12 +56,17 @@ private:
 	std::string indentStr;
 };
 
-// 新增：生成 Visitor 接口和模板类的代码
+// 修改后：根据 baseName 生成 Visitor 接口和模板类的代码
 std::string GenerateVisitorBody(const std::string& baseName, const std::vector<std::string>& types)
 {
 	ContentWriter writer;
+	
+	// 根据 baseName 构造访问者接口的名称
+	std::string iVisitorName = "I" + baseName + "Visitor";
+	std::string visitorName = baseName + "Visitor";
+	std::string visitMethodName = "Visit" + baseName; // 新增：构造 Visit 方法名
 
-	// 1. 生成所有 Expr 子类的前向声明
+	// 1. 生成所有子类的前向声明
 	for (const std::string& type : types)
 	{
 		std::string className = Util::Trim(type.substr(0, type.find(':')));
@@ -70,33 +75,35 @@ std::string GenerateVisitorBody(const std::string& baseName, const std::vector<s
 	writer.WriteLine("struct %s;", baseName.c_str());
 	writer.WriteLine("");
 
-	// 2. 生成 IVisitor 接口
-	writer.WriteLine("struct IVisitor");
+	// 2. 生成 I<BaseName>Visitor 接口
+	writer.WriteLine("struct %s", iVisitorName.c_str());
 	writer.EnterScope();
-	writer.WriteLine("virtual ~IVisitor() = default;");
+	writer.WriteLine("virtual ~%s() = default;", iVisitorName.c_str());
 	for (const std::string& type : types)
 	{
 		std::string className = Util::Trim(type.substr(0, type.find(':')));
-		writer.WriteLine("virtual void Visit%s%s(const %s* expr) = 0;", className.c_str(), baseName.c_str(), className.c_str());
+		// Visit 方法名也加上 baseName 后缀
+		writer.WriteLine("virtual void Visit%s%s(const %s* %s) = 0;", className.c_str(), baseName.c_str(), className.c_str(), baseName.c_str());
 	}
 	writer.ExitDefineScope();
 	writer.WriteLine("");
 
-	// 3. 生成 Visitor<R> 模板类
+	// 3. 生成 <BaseName>Visitor<R> 模板类
 	writer.WriteLine("template<typename R>");
-	writer.WriteLine("struct Visitor : public IVisitor");
+	writer.WriteLine("struct %s : public %s", visitorName.c_str(), iVisitorName.c_str());
 	writer.EnterScope();
 	writer.WriteLine("R result; // 用于存储访问结果");
 	writer.WriteLine("");
-	writer.WriteLine("R Visit(const %s* expr);", baseName.c_str());
+	// 使用动态生成的 Visit 方法名
+	writer.WriteLine("R %s(const %s* %s);", visitMethodName.c_str(), baseName.c_str(), baseName.c_str());
 	writer.WriteLine("");
 
 	// 生成 Visit... 方法的 override
 	for (const std::string& type : types)
 	{
 		std::string className = Util::Trim(type.substr(0, type.find(':')));
-		writer.WriteLine("void Visit%s%s(const %s* expr) override { result = DoVisit%s%s(expr); }",
-			className.c_str(), baseName.c_str(), className.c_str(), className.c_str(), baseName.c_str());
+		writer.WriteLine("void Visit%s%s(const %s* %s) override { result = DoVisit%s%s(%s); }",
+			className.c_str(), baseName.c_str(), className.c_str(), baseName.c_str(), className.c_str(), baseName.c_str(), baseName.c_str());
 	}
 	writer.WriteLine("");
 	writer.WriteLine("protected:");
@@ -105,7 +112,7 @@ std::string GenerateVisitorBody(const std::string& baseName, const std::vector<s
 	for (const std::string& type : types)
 	{
 		std::string className = Util::Trim(type.substr(0, type.find(':')));
-		writer.WriteLine("virtual R DoVisit%s%s(const %s* expr) = 0;", className.c_str(), baseName.c_str(), className.c_str());
+		writer.WriteLine("virtual R DoVisit%s%s(const %s* %s) = 0;", className.c_str(), baseName.c_str(), className.c_str(), baseName.c_str());
 	}
 	writer.ExitDefineScope();
 
@@ -152,10 +159,10 @@ void GenerateAST::DefineAST(const std::string& outputDir, const std::string& bas
 		exprBody += DefineType(baseName, className, fields);
 	}
 
-	size_t exprPos = contents.find("$(EXPR_DEFINE_BODY)");
+	size_t exprPos = contents.find("$(DEFINE_BODY)");
 	if (exprPos != std::string::npos)
 	{
-		contents.replace(exprPos, sizeof("$(EXPR_DEFINE_BODY)") - 1, exprBody);
+		contents.replace(exprPos, sizeof("$(DEFINE_BODY)") - 1, exprBody);
 	}
 
 	// --- 修改结束 ---
@@ -267,7 +274,7 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 	}
 
 	writer.WriteLine("");
-	writer.WriteLine("void Accept(IVisitor& visitor) const override");
+	writer.WriteLine("void Accept(I%sVisitor& visitor) const override", baseName.c_str()); // 注意这里的 I<BaseName>Visitor
 	writer.EnterScope();
 	writer.WriteLine("visitor.Visit%s%s(this);", className.c_str(), baseName.c_str());
 	writer.ExitScope();

@@ -8,16 +8,17 @@ struct Expr
 {
 	virtual ~Expr() = default;
 
-	// Accept 方法现在是非模板的，并且接受基接口的引用
-	virtual void Accept(IVisitor& visitor) const = 0;
+	// Accept 方法现在接受 IExprVisitor
+	virtual void Accept(IExprVisitor& visitor) const = 0;
 };
 typedef std::shared_ptr<Expr> ExprPtr;
 
+// Visitor -> ExprVisitor
 template<typename R>
-R Visitor<R>::Visit(const Expr* expr)
+R ExprVisitor<R>::VisitExpr(const Expr* expr)
 {
 	expr->Accept(*this);
 	return result;
 }
 
-$(EXPR_DEFINE_BODY)
+$(DEFINE_BODY)
