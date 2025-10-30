@@ -7,7 +7,8 @@
 
 int main(int argc, char* argv[])
 {
-	TestUnit::RunExpressionInterpreterTest();
+	//TestUnit::RunExpressionInterpreterTest();
+	TestUnit::RunStatementInterpreterTest();
 	//Lox& lox = Lox::GetInstance();
 	//lox.Run(argc - 1, argc > 1 ? &argv[1] : nullptr);
 
@@ -18,10 +19,14 @@ int main(int argc, char* argv[])
 		"Binary : Expr left, Token op, Expr right",
 		"Grouping : Expr expression",
 		"Literal : Token value",
-		"Unary : Token op, Expr right"
+		"Unary : Token op, Expr right",
+		"Variable : Token name"
 	});
 	generator.DefineAST("D:/Lox/", "Stat",
 	{
+		"Expression : Expr expression",
+		"Print : Expr expression",
+		"Var : Token name, Expr initializer",
 	});
 
 	return 0;

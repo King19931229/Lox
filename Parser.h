@@ -1,5 +1,6 @@
 #pragma once
 #include "Expr.h"
+#include "Stat.h"
 #include <vector>
 
 class Parser
@@ -11,7 +12,7 @@ protected:
 
 	inline bool IsAtEnd() const
 	{
-		return current >= tokens.size();
+		return tokens[current].type == TokenType::END_OF_FILE;
 	}
 
 	inline bool Check(TokenType type) const
@@ -42,15 +43,6 @@ protected:
 	Token Error(const Token& token, const std::string& errorMessage);
 	void Synchronize();
 
-	ExprPtr Comma();
-	ExprPtr Ternary();
-	ExprPtr Equality();
-	ExprPtr Comparsion();
-	ExprPtr Term();
-	ExprPtr Factor();
-	ExprPtr Unary();
-	ExprPtr Primary();
-
 	template<typename... TokenTypes>
 	bool Match(TokenTypes... types)
 	{
@@ -64,6 +56,21 @@ protected:
 		}
 		return false;
 	}
+
+	ExprPtr Comma();
+	ExprPtr Ternary();
+	ExprPtr Equality();
+	ExprPtr Comparsion();
+	ExprPtr Term();
+	ExprPtr Factor();
+	ExprPtr Unary();
+	ExprPtr Primary();
+
+	StatPtr Declaration();
+	StatPtr VarDeclaration();
+	StatPtr Statment();
+	StatPtr PrintStatement();
+	StatPtr ExpressionStatment();
 public:
 	Parser(const std::vector<Token>& inTokens);
 	~Parser();
@@ -73,5 +80,6 @@ public:
 		return error;
 	}
 
-	ExprPtr Parse();
+	ExprPtr ParseExpr();
+	std::vector<StatPtr> Parse();
 };

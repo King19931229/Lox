@@ -5,4 +5,5 @@ struct TestUnit
 	static void RunScannerTest();
 	static void RunExpressionParserTest();
 	static void RunExpressionInterpreterTest();
+	static void RunStatementInterpreterTest();
 };

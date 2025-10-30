@@ -39,7 +39,7 @@ Token Parser::Error(const Token& token, const std::string& errorMessage)
 void Parser::Synchronize()
 {
 	// Consume tokens until reaching a statement boundary
-	Advance();
+	if (!IsAtEnd()) Advance();
 	while (!IsAtEnd())
 	{
 		if (Previous().type == TokenType::SEMICOLON) return;
@@ -198,16 +198,76 @@ ExprPtr Parser::Primary()
 		return expr; // Should wrap in Grouping, omitted for brevity
 	}
 
+	if (Match(TokenType::IDENTIFIER))
+	{
+		return Variable::Create(Previous());
+	}
+
 	Error(Peek(), "Expect expression.");
 	return nullptr;
 }
 
-ExprPtr Parser::Parse()
+ExprPtr Parser::ParseExpr()
 {
 	ExprPtr expr = Comma();
-	if (!Match(TokenType::END_OF_FILE))
-	{
-		Error(Peek(), "Unexpected token after expression.");
-	}
 	return expr;
+}
+
+std::vector<StatPtr> Parser::Parse()
+{
+	std::vector<StatPtr> statments;
+	while (!IsAtEnd())
+	{
+		statments.push_back(Declaration());
+	}
+	return statments;
+}
+
+StatPtr Parser::Statment()
+{
+	if (Match(TokenType::PRINT))
+	{
+		return PrintStatement();
+	}
+	return ExpressionStatment();
+}
+
+StatPtr Parser::Declaration()
+{
+	if (Match(TokenType::VAR))
+	{
+		return VarDeclaration();
+	}
+	else
+	{
+		StatPtr statment = Statment();
+		return statment;
+	}
+}
+
+StatPtr Parser::VarDeclaration()
+{
+	Consume(TokenType::IDENTIFIER, "Expect variable name.");
+	Token name = Previous();
+	ExprPtr initializer = nullptr;
+	if (Match(TokenType::EQUAL))
+	{
+		initializer = Comma();
+	}
+	Consume(TokenType::SEMICOLON, "Expect ';' after variable declaration.");
+	return Var::Create(name, initializer);
+}
+
+StatPtr Parser::PrintStatement()
+{
+	ExprPtr expr = Comma();
+	Consume(TokenType::SEMICOLON, "Expect ';' after value.");
+	return Print::Create(expr);
+}
+
+StatPtr Parser::ExpressionStatment()
+{
+	ExprPtr expr = Comma();
+	Consume(TokenType::SEMICOLON, "Expect ';' after value.");
+	return Expression::Create(expr);
 }

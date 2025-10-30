@@ -7,6 +7,7 @@ struct Binary;
 struct Grouping;
 struct Literal;
 struct Unary;
+struct Variable;
 struct Expr;
 
 struct IExprVisitor
@@ -17,6 +18,7 @@ struct IExprVisitor
 	virtual void VisitGroupingExpr(const Grouping* Expr) = 0;
 	virtual void VisitLiteralExpr(const Literal* Expr) = 0;
 	virtual void VisitUnaryExpr(const Unary* Expr) = 0;
+	virtual void VisitVariableExpr(const Variable* Expr) = 0;
 };
 
 template<typename R>
@@ -31,6 +33,7 @@ struct ExprVisitor : public IExprVisitor
 	void VisitGroupingExpr(const Grouping* Expr) override { result = DoVisitGroupingExpr(Expr); }
 	void VisitLiteralExpr(const Literal* Expr) override { result = DoVisitLiteralExpr(Expr); }
 	void VisitUnaryExpr(const Unary* Expr) override { result = DoVisitUnaryExpr(Expr); }
+	void VisitVariableExpr(const Variable* Expr) override { result = DoVisitVariableExpr(Expr); }
 	
 	protected:
 	virtual R DoVisitTernaryExpr(const Ternary* Expr) = 0;
@@ -38,6 +41,7 @@ struct ExprVisitor : public IExprVisitor
 	virtual R DoVisitGroupingExpr(const Grouping* Expr) = 0;
 	virtual R DoVisitLiteralExpr(const Literal* Expr) = 0;
 	virtual R DoVisitUnaryExpr(const Unary* Expr) = 0;
+	virtual R DoVisitVariableExpr(const Variable* Expr) = 0;
 };
 
 
@@ -180,5 +184,27 @@ struct Unary : public Expr
 	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitUnaryExpr(this);
+	}
+};
+struct Variable;
+typedef std::shared_ptr<Variable> VariablePtr;
+
+struct Variable : public Expr
+{
+	Token name;
+	
+	Variable(const Token& inName)
+	{
+		this->name = inName;
+	}
+	
+	static VariablePtr Create(const Token& inName)
+	{
+		return std::make_shared<Variable>(inName);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitVariableExpr(this);
 	}
 };

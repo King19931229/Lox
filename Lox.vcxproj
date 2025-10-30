@@ -152,6 +152,7 @@
     <ClCompile Include="TokenType.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Environment.h" />
     <ClInclude Include="Expr.h" />
     <ClInclude Include="Expr.template.h" />
     <ClInclude Include="GenerateAST.h" />

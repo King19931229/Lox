@@ -6,6 +6,8 @@
 #include <vector>
 #include <string>
 #include <utility> // for std::pair
+#include <iostream> // 用于捕获 cout
+#include <sstream>  // 用于捕获 cout
 
 void TestUnit::RunScannerTest()
 {
@@ -183,12 +185,12 @@ void TestUnit::RunExpressionInterpreterTest()
 		Scanner scanner(test.first);
 		auto tokens = scanner.ScanTokens();
 		Parser parser(tokens);
-		ExprPtr expression = parser.Parse();
+		ExprPtr expression = parser.ParseExpr();
 
 		// 只有在解析成功时才进行解释
 		if (expression && !parser.HasError())
 		{
-			ValuePtr result = interpreter.Interpret(expression);
+			ValuePtr result = interpreter.InterpretExpr(expression);
 			resultString = static_cast<std::string>(*result);
 		}
 		else
@@ -204,6 +206,122 @@ void TestUnit::RunExpressionInterpreterTest()
 		else
 		{
 			printf("  [FAIL] Expected: %s, Got: %s\n", test.second.c_str(), resultString.c_str());
+		}
+		printf("----------------------------------------\n\n");
+	}
+}
+
+// 辅助函数：运行代码并捕获 stdout 输出
+std::string RunWithCapture(const std::string& source)
+{
+	// 1. 备份原始的 cout 缓冲并重定向
+	std::streambuf* oldCoutStreamBuf = std::cout.rdbuf();
+	std::ostringstream strCout;
+	std::cout.rdbuf(strCout.rdbuf());
+
+	// 2. 运行扫描、解析和解释流程
+	Scanner scanner(source);
+	auto tokens = scanner.ScanTokens();
+	Parser parser(tokens);
+	auto statements = parser.Parse();
+
+	// 只有在解析成功时才进行解释
+	if (!parser.HasError())
+	{
+		Interpreter interpreter;
+		interpreter.Interpret(statements); // 假设 Interpret 会执行语句
+	}
+	else
+	{
+		// 如果解析失败，返回一个特定的错误信息
+		strCout << "Parse Error";
+	}
+
+	// 3. 恢复原始的 cout 缓冲
+	std::cout.rdbuf(oldCoutStreamBuf);
+
+	// 4. 返回捕获到的输出
+	return strCout.str();
+}
+
+// 新增辅助函数：转义字符串以便打印
+std::string EscapeForPrinting(const std::string& str)
+{
+	std::string result;
+	for (char c : str)
+	{
+		switch (c)
+		{
+		case '\n': result += "\\n"; break;
+		case '\r': result += "\\r"; break;
+		case '\t': result += "\\t"; break;
+		case '\"': result += "\\\""; break;
+		case '\\': result += "\\\\"; break;
+		default:
+			result += c;
+			break;
+		}
+	}
+	return result;
+}
+
+void TestUnit::RunStatementInterpreterTest()
+{
+	const std::vector<std::pair<std::string, std::string>> testCases = {
+		// 1. Print 语句
+		{ "print 123;", "123\n" },
+		{ "print \"hello, world!\";", "hello, world!\n" },
+		{ "print true;", "true\n" },
+		{ "print nil;", "nil\n" },
+		{ "print 1 + 2 * 3;", "7\n" },
+
+		// 2. 表达式语句 (应该没有输出)
+		{ "1 + 2;", "" },
+		{ "false;", "" },
+
+		// 3. 变量声明和赋值实现
+		{ "var a = 10; a + 20;", "" },
+		{ "var msg = \"test\"; print msg;", "test\n" },
+
+		// 4. 多条语句
+		{ "print 1; print 2; print 3;", "1\n2\n3\n" },
+		{ "1 + 1; print \"result\"; 3*3;", "result\n" },
+
+		// 5. 解析错误
+		{ "print 123", "Parse Error" }, // 缺少分号
+
+		// --- 以下为占位符，当你的解释器支持这些功能时可以取消注释 ---
+		// 6. 块作用域
+		// { "{ print 1; print 2; }", "1\n2\n" },
+
+		// 7. 变量声明与赋值
+		// { "var a = 10; print a;", "10\n" },
+		// { "var a = 1; a = 2; print a;", "2\n" },
+		// { "var a = \"hello\"; var b = \" world\"; print a + b;", "hello world\n" },
+
+		// 8. 条件语句
+		// { "if (true) print \"yes\";", "yes\n" },
+		// { "if (false) print \"yes\"; else print \"no\";", "no\n" },
+		// { "var a = 1; if (a > 0) { print \"positive\"; }", "positive\n" },
+	};
+
+	for (const auto& test : testCases)
+	{
+		printf("--- Testing Statement: \"%s\" ---\n", test.first.c_str());
+
+		std::string capturedOutput = RunWithCapture(test.first);
+
+		// 使用转义函数来美化输出
+		std::string expectedEscaped = EscapeForPrinting(test.second);
+		std::string gotEscaped = EscapeForPrinting(capturedOutput);
+
+		if (capturedOutput == test.second)
+		{
+			printf("  [PASS] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
+		}
+		else
+		{
+			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
 		}
 		printf("----------------------------------------\n\n");
 	}

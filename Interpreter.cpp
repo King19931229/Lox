@@ -1,14 +1,29 @@
 #include "Interpreter.h"
+#include "Environment.h" // 从 .h 文件移动至此
+#include <stdexcept>     // 从 .h 文件移动至此
 
-ValuePtr Interpreter::Interpret(const ExprPtr& expr)
+ValuePtr Interpreter::InterpretExpr(const ExprPtr& expr)
 {
 	if (!expr) return NilValue::Create();
 	return VisitExpr(expr.get());
 }
 
+void Interpreter::Interpret(const std::vector<StatPtr>& statements)
+{
+	for(const StatPtr& stat : statements)
+	{
+		VisitStat(stat.get());
+	}
+}
+
 std::string Interpreter::Stringify(ValuePtr value)
 {
 	return static_cast<std::string>(*value);
+}
+
+bool Interpreter::Trueify(ValuePtr value)
+{
+	return static_cast<bool>(*value);
 }
 
 ValuePtr Interpreter::Evaluate(const ExprPtr& expr)
@@ -20,7 +35,7 @@ ValuePtr Interpreter::Evaluate(const ExprPtr& expr)
 ValuePtr Interpreter::DoVisitTernaryExpr(const Ternary* expr)
 {
 	ValuePtr condition = Evaluate(expr->left);
-	if (static_cast<bool>(*condition))
+	if (Trueify(condition))
 	{
 		return Evaluate(expr->middle);
 	}
@@ -105,4 +120,28 @@ ValuePtr Interpreter::DoVisitUnaryExpr(const Unary* expr)
 	}
 
 	throw std::runtime_error("Interpreter error: Unknown unary operator.");
+}
+
+ValuePtr Interpreter::DoVisitVariableExpr(const Variable* Expr)
+{
+	return environment.Get(Expr->name.lexeme);
+}
+
+bool Interpreter::DoVisitExpressionStat(const Expression* Stat)
+{
+	Evaluate(Stat->expression);
+	return true;
+}
+
+bool Interpreter::DoVisitPrintStat(const Print* Stat)
+{
+	Evaluate(Stat->expression);
+	std::cout << Stringify(Evaluate(Stat->expression)) << std::endl;
+	return true;
+}
+
+bool Interpreter::DoVisitVarStat(const Var* Stat)
+{
+	environment.Define(Stat->name.lexeme, Evaluate(Stat->initializer));
+	return true;
 }

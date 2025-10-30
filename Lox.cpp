@@ -22,7 +22,6 @@ Lox::Lox()
 
 void Lox::Run(int argc, char* argv[])
 {
-
     if (argc > 1)
     {
         printf("Argument count error: %d, expected at most 1\n", argc);
@@ -88,11 +87,11 @@ void Lox::Run(const char* source)
 	std::vector<Token> tokens = scanner.ScanTokens();
 	Parser parser(tokens);
 
-	ExprPtr expr = parser.Parse();
+	std::vector<StatPtr> stats = parser.Parse();
 	if (hadError) return;
 
 	Interpreter interpreter;
-	ValuePtr result = interpreter.Interpret(expr);
+	interpreter.Interpret(stats);
 }
 
 void Lox::Error(size_t line, size_t column, const char* fmt, ...)
@@ -113,7 +112,7 @@ void Lox::RuntimeError(const char* fmt, ...)
 	va_start(args, fmt);
 	vsnprintf(buffer, sizeof(buffer), fmt, args);
 	va_end(args);
-	Report(0, 0, " Runtime", buffer);
+	Report(0, 0, " RuntimeError", buffer);
 	hadRuntimeError = true;
 }
 
