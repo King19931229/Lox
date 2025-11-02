@@ -322,9 +322,9 @@ void TestUnit::RunStatementInterpreterTest()
 		{ "var a = \"hello\"; var b = \" world\"; print a + b;", "hello world\n" },
 
 		// 8. Ìõ¼þÓï¾ä
-		// { "if (true) print \"yes\";", "yes\n" },
-		// { "if (false) print \"yes\"; else print \"no\";", "no\n" },
-		// { "var a = 1; if (a > 0) { print \"positive\"; }", "positive\n" },
+		{ "if (true) print \"yes\";", "yes\n" },
+		{ "if (false) print \"yes\"; else print \"no\";", "no\n" },
+		{ "var a = 1; if (a > 0) { print \"positive\"; }", "positive\n" },
 	};
 
 #ifdef _WIN32

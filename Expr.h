@@ -9,6 +9,7 @@ struct Literal;
 struct Unary;
 struct Variable;
 struct Assign;
+struct Logical;
 struct Expr;
 
 struct IExprVisitor
@@ -21,6 +22,7 @@ struct IExprVisitor
 	virtual void VisitUnaryExpr(const Unary* Expr) = 0;
 	virtual void VisitVariableExpr(const Variable* Expr) = 0;
 	virtual void VisitAssignExpr(const Assign* Expr) = 0;
+	virtual void VisitLogicalExpr(const Logical* Expr) = 0;
 };
 
 template<typename R>
@@ -37,6 +39,7 @@ struct ExprVisitor : public IExprVisitor
 	void VisitUnaryExpr(const Unary* Expr) override { result = DoVisitUnaryExpr(Expr); }
 	void VisitVariableExpr(const Variable* Expr) override { result = DoVisitVariableExpr(Expr); }
 	void VisitAssignExpr(const Assign* Expr) override { result = DoVisitAssignExpr(Expr); }
+	void VisitLogicalExpr(const Logical* Expr) override { result = DoVisitLogicalExpr(Expr); }
 	
 	protected:
 	virtual R DoVisitTernaryExpr(const Ternary* Expr) = 0;
@@ -46,6 +49,7 @@ struct ExprVisitor : public IExprVisitor
 	virtual R DoVisitUnaryExpr(const Unary* Expr) = 0;
 	virtual R DoVisitVariableExpr(const Variable* Expr) = 0;
 	virtual R DoVisitAssignExpr(const Assign* Expr) = 0;
+	virtual R DoVisitLogicalExpr(const Logical* Expr) = 0;
 };
 
 
@@ -234,5 +238,31 @@ struct Assign : public Expr
 	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitAssignExpr(this);
+	}
+};
+struct Logical;
+typedef std::shared_ptr<Logical> LogicalPtr;
+
+struct Logical : public Expr
+{
+	ExprPtr left;
+	Token op;
+	ExprPtr right;
+	
+	Logical(const ExprPtr& inLeft, const Token& inOp, const ExprPtr& inRight)
+	{
+		this->left = inLeft;
+		this->op = inOp;
+		this->right = inRight;
+	}
+	
+	static LogicalPtr Create(const ExprPtr& inLeft, const Token& inOp, const ExprPtr& inRight)
+	{
+		return std::make_shared<Logical>(inLeft, inOp, inRight);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitLogicalExpr(this);
 	}
 };

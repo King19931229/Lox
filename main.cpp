@@ -13,7 +13,7 @@ int main(int argc, char* argv[])
 	//lox.Run(0, nullptr);
 	//lox.Run(argc - 1, argc > 1 ? &argv[1] : nullptr);
 
-	/*GenerateAST generator;
+	GenerateAST generator;
 	generator.DefineAST("G:/Lox/", "Expr",
 	{
 		"Ternary : Expr left, Token opLeft, Expr middle, Token opRight, Expr right",
@@ -23,6 +23,7 @@ int main(int argc, char* argv[])
 		"Unary : Token op, Expr right",
 		"Variable : Token name",
 		"Assign : Token name, Expr value",
+		"Logical : Expr left, Token op, Expr right",
 	});
 	generator.DefineAST("G:/Lox/", "Stat",
 	{
@@ -30,7 +31,8 @@ int main(int argc, char* argv[])
 		"Print : Expr expression",
 		"Var : Token name, Expr initializer",
 		"Block : List<Stat> statements",
-	});*/
+		"If : Expr condition, Stat thenBranch, Stat elseBranch",
+	});
 
 	return 0;
 }

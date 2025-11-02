@@ -22,7 +22,7 @@ void Interpreter::Interpret(const std::vector<StatPtr>& statements)
 {
 	for(const StatPtr& stat : statements)
 	{
-		VisitStat(stat.get());
+		Execute(stat);
 	}
 }
 
@@ -40,6 +40,14 @@ ValuePtr Interpreter::Evaluate(const ExprPtr& expr)
 {
 	if (!expr) return NilValue::Create();
 	return VisitExpr(expr.get());
+}
+
+void Interpreter::Execute(const StatPtr& stat)
+{
+	if (stat)
+	{
+		VisitStat(stat.get());
+	}
 }
 
 ValuePtr Interpreter::DoVisitTernaryExpr(const Ternary* expr)
@@ -137,40 +145,54 @@ ValuePtr Interpreter::DoVisitUnaryExpr(const Unary* expr)
 	return ErrorValue::Create("Unknown unary operator.");
 }
 
-ValuePtr Interpreter::DoVisitVariableExpr(const Variable* Expr)
+ValuePtr Interpreter::DoVisitVariableExpr(const Variable* expr)
 {
-	return environment->Get(Expr->name.lexeme);
+	return environment->Get(expr->name.lexeme);
 }
 
-ValuePtr Interpreter::DoVisitAssignExpr(const Assign* Expr)
+ValuePtr Interpreter::DoVisitAssignExpr(const Assign* expr)
 {
-	ValuePtr value = Evaluate(Expr->value);
-	environment->Assign(Expr->name.lexeme, value, Expr->name.line, Expr->name.column);
+	ValuePtr value = Evaluate(expr->value);
+	environment->Assign(expr->name.lexeme, value, expr->name.line, expr->name.column);
 	return value;
 }
 
-bool Interpreter::DoVisitExpressionStat(const Expression* Stat)
+ValuePtr Interpreter::DoVisitLogicalExpr(const Logical* expr)
 {
-	Evaluate(Stat->expression);
-	return true;
-}
-
-bool Interpreter::DoVisitPrintStat(const Print* Stat)
-{
-	Evaluate(Stat->expression);
-	std::cout << Stringify(Evaluate(Stat->expression)) << std::endl;
-	return true;
-}
-
-bool Interpreter::DoVisitVarStat(const Var* Stat)
-{
-	if (Stat->initializer)
+	ValuePtr left = Evaluate(expr->left);
+	if (expr->op.type == TokenType::OR)
 	{
-		environment->Define(Stat->name.lexeme, Evaluate(Stat->initializer));
+		if (Trueify(left)) return left;
+	}
+	else // AND
+	{
+		if (!Trueify(left)) return left;
+	}
+	return Evaluate(expr->right);
+}
+
+bool Interpreter::DoVisitExpressionStat(const Expression* stat)
+{
+	Evaluate(stat->expression);
+	return true;
+}
+
+bool Interpreter::DoVisitPrintStat(const Print* stat)
+{
+	Evaluate(stat->expression);
+	std::cout << Stringify(Evaluate(stat->expression)) << std::endl;
+	return true;
+}
+
+bool Interpreter::DoVisitVarStat(const Var* stat)
+{
+	if (stat->initializer)
+	{
+		environment->Define(stat->name.lexeme, Evaluate(stat->initializer));
 	}
 	else
 	{
-		environment->Define(Stat->name.lexeme, ErrorValue::Create("Uninitialized variable."));
+		environment->Define(stat->name.lexeme, ErrorValue::Create("Uninitialized variable."));
 	}
 	return true;
 }
@@ -179,14 +201,31 @@ void Interpreter::ExecuteBlock(const std::vector<StatPtr>& statements, Environme
 {
 	Environment* oldEnv = environment;
 	environment = newEnv;
-	Interpret(statements);
+	for (StatPtr stat : statements)
+	{
+		Execute(stat);
+	}
 	environment = oldEnv;
 }
 
-bool Interpreter::DoVisitBlockStat(const Block* Stat)
+bool Interpreter::DoVisitBlockStat(const Block* stat)
 {
 	Environment* newEnv = new Environment(environment);
-	ExecuteBlock(Stat->statements, newEnv);
+	ExecuteBlock(stat->statements, newEnv);
 	delete newEnv;
+	return true;
+}
+
+bool Interpreter::DoVisitIfStat(const If* stat)
+{
+	ValuePtr value = Evaluate(stat->condition);
+	if (Trueify(value))
+	{
+		Execute(stat->thenBranch);
+	}
+	else
+	{
+		Execute(stat->elseBranch);
+	}
 	return true;
 }

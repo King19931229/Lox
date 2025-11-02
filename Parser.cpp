@@ -63,7 +63,7 @@ void Parser::Synchronize()
 
 ExprPtr Parser::Assignment()
 {
-	ExprPtr expr = Comma();
+	ExprPtr expr = Or();
 	if (Match(TokenType::EQUAL))
 	{
 		Token equal = Previous();
@@ -76,6 +76,30 @@ ExprPtr Parser::Assignment()
 		}
 		Lox::GetInstance().RuntimeError(equal.line, equal.column, "Invalid assignment target.");
 		return nullptr;
+	}
+	return expr;
+}
+
+ExprPtr Parser::Or()
+{
+	ExprPtr expr = And();
+	while (Match(TokenType::OR))
+	{
+		Token orOp = Previous();
+		ExprPtr otherExpr = And();
+		expr = Logical::Create(expr, orOp, otherExpr);
+	}
+	return expr;
+}
+
+ExprPtr Parser::And()
+{
+	ExprPtr expr = Comma();
+	while (Match(TokenType::AND))
+	{
+		Token andOp = Previous();
+		ExprPtr otherExpr = Comma();
+		expr = Logical::Create(expr, andOp, otherExpr);
 	}
 	return expr;
 }
@@ -107,7 +131,7 @@ ExprPtr Parser::Ternary()
 	if (Match(TokenType::QUESTION))
 	{
 		Token opLeft = Previous();
-		ExprPtr middle = Comma();
+		ExprPtr middle = Or();
 		Consume(TokenType::COLON, "Expect ':' after expression.");
 		Token opRight = Previous();
 		ExprPtr right = Ternary();
@@ -256,6 +280,10 @@ StatPtr Parser::Statment()
 	{
 		return BlockStatement();
 	}
+	else if (Match(TokenType::IF))
+	{
+		return IfStatement();
+	}
 	return ExpressionStatment();
 }
 
@@ -301,6 +329,18 @@ StatPtr Parser::BlockStatement()
 	}
 	Consume(TokenType::RIGHT_BRACE, "Expect '}' after block.");
 	return Block::Create(statements);
+}
+
+StatPtr Parser::IfStatement()
+{
+	ExprPtr condition = Expression();
+	StatPtr thenBranch = Declaration();
+	StatPtr elseBranch = nullptr;
+	if (Match(TokenType::ELSE))
+	{
+		elseBranch = Declaration();
+	}
+	return If::Create(condition, thenBranch, elseBranch);
 }
 
 StatPtr Parser::ExpressionStatment()

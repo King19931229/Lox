@@ -7,6 +7,7 @@ struct Expression;
 struct Print;
 struct Var;
 struct Block;
+struct If;
 struct Stat;
 
 struct IStatVisitor
@@ -16,6 +17,7 @@ struct IStatVisitor
 	virtual void VisitPrintStat(const Print* Stat) = 0;
 	virtual void VisitVarStat(const Var* Stat) = 0;
 	virtual void VisitBlockStat(const Block* Stat) = 0;
+	virtual void VisitIfStat(const If* Stat) = 0;
 };
 
 template<typename R>
@@ -29,12 +31,14 @@ struct StatVisitor : public IStatVisitor
 	void VisitPrintStat(const Print* Stat) override { result = DoVisitPrintStat(Stat); }
 	void VisitVarStat(const Var* Stat) override { result = DoVisitVarStat(Stat); }
 	void VisitBlockStat(const Block* Stat) override { result = DoVisitBlockStat(Stat); }
+	void VisitIfStat(const If* Stat) override { result = DoVisitIfStat(Stat); }
 	
 	protected:
 	virtual R DoVisitExpressionStat(const Expression* Stat) = 0;
 	virtual R DoVisitPrintStat(const Print* Stat) = 0;
 	virtual R DoVisitVarStat(const Var* Stat) = 0;
 	virtual R DoVisitBlockStat(const Block* Stat) = 0;
+	virtual R DoVisitIfStat(const If* Stat) = 0;
 };
 
 
@@ -142,5 +146,31 @@ struct Block : public Stat
 	void Accept(IStatVisitor& visitor) const override
 	{
 		visitor.VisitBlockStat(this);
+	}
+};
+struct If;
+typedef std::shared_ptr<If> IfPtr;
+
+struct If : public Stat
+{
+	ExprPtr condition;
+	StatPtr thenBranch;
+	StatPtr elseBranch;
+	
+	If(const ExprPtr& inCondition, const StatPtr& inThenBranch, const StatPtr& inElseBranch)
+	{
+		this->condition = inCondition;
+		this->thenBranch = inThenBranch;
+		this->elseBranch = inElseBranch;
+	}
+	
+	static IfPtr Create(const ExprPtr& inCondition, const StatPtr& inThenBranch, const StatPtr& inElseBranch)
+	{
+		return std::make_shared<If>(inCondition, inThenBranch, inElseBranch);
+	}
+	
+	void Accept(IStatVisitor& visitor) const override
+	{
+		visitor.VisitIfStat(this);
 	}
 };
