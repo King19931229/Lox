@@ -8,6 +8,7 @@ struct Grouping;
 struct Literal;
 struct Unary;
 struct Variable;
+struct Assign;
 struct Expr;
 
 struct IExprVisitor
@@ -19,6 +20,7 @@ struct IExprVisitor
 	virtual void VisitLiteralExpr(const Literal* Expr) = 0;
 	virtual void VisitUnaryExpr(const Unary* Expr) = 0;
 	virtual void VisitVariableExpr(const Variable* Expr) = 0;
+	virtual void VisitAssignExpr(const Assign* Expr) = 0;
 };
 
 template<typename R>
@@ -34,6 +36,7 @@ struct ExprVisitor : public IExprVisitor
 	void VisitLiteralExpr(const Literal* Expr) override { result = DoVisitLiteralExpr(Expr); }
 	void VisitUnaryExpr(const Unary* Expr) override { result = DoVisitUnaryExpr(Expr); }
 	void VisitVariableExpr(const Variable* Expr) override { result = DoVisitVariableExpr(Expr); }
+	void VisitAssignExpr(const Assign* Expr) override { result = DoVisitAssignExpr(Expr); }
 	
 	protected:
 	virtual R DoVisitTernaryExpr(const Ternary* Expr) = 0;
@@ -42,6 +45,7 @@ struct ExprVisitor : public IExprVisitor
 	virtual R DoVisitLiteralExpr(const Literal* Expr) = 0;
 	virtual R DoVisitUnaryExpr(const Unary* Expr) = 0;
 	virtual R DoVisitVariableExpr(const Variable* Expr) = 0;
+	virtual R DoVisitAssignExpr(const Assign* Expr) = 0;
 };
 
 
@@ -206,5 +210,29 @@ struct Variable : public Expr
 	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitVariableExpr(this);
+	}
+};
+struct Assign;
+typedef std::shared_ptr<Assign> AssignPtr;
+
+struct Assign : public Expr
+{
+	Token name;
+	ExprPtr value;
+	
+	Assign(const Token& inName, const ExprPtr& inValue)
+	{
+		this->name = inName;
+		this->value = inValue;
+	}
+	
+	static AssignPtr Create(const Token& inName, const ExprPtr& inValue)
+	{
+		return std::make_shared<Assign>(inName, inValue);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitAssignExpr(this);
 	}
 };

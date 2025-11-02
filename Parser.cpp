@@ -27,7 +27,7 @@ Token Parser::Error(const Token& token, const std::string& errorMessage)
 	{
 		Lox::GetInstance().Error(token.line, token.column, "at end: %s", errorMessage.c_str());
 	}
-	else if(token.type != TokenType::ERROR)
+	else
 	{
 		Lox::GetInstance().Error(token.line, token.column, "at '%s': %s", token.lexeme.c_str(), errorMessage.c_str());
 	}
@@ -59,6 +59,25 @@ void Parser::Synchronize()
 		}
 		Advance();
 	}
+}
+
+ExprPtr Parser::Assignment()
+{
+	ExprPtr expr = Comma();
+	if (Match(TokenType::EQUAL))
+	{
+		Token equal = Previous();
+		ExprPtr value = Assignment();
+
+		if (Variable* var =	dynamic_cast<Variable*>(expr.get()))
+		{
+			expr = Assign::Create(var->name, value);
+			return expr;
+		}
+		Lox::GetInstance().RuntimeError(equal.line, equal.column, "Invalid assignment target.");
+		return nullptr;
+	}
+	return expr;
 }
 
 ExprPtr Parser::Comma()
@@ -184,6 +203,11 @@ ExprPtr Parser::Unary()
 	return Primary();
 }
 
+ExprPtr Parser::Expression()
+{
+	return Assignment();
+}
+
 ExprPtr Parser::Primary()
 {
 	if (Match(TokenType::FALSE, TokenType::TRUE, TokenType::NIL, TokenType::NUMBER, TokenType::STRING))
@@ -193,7 +217,7 @@ ExprPtr Parser::Primary()
 
 	if (Match(TokenType::LEFT_PAREN))
 	{
-		ExprPtr expr = Comma();
+		ExprPtr expr = Expression();
 		Consume(TokenType::RIGHT_PAREN, "Expect ')' after expression.");
 		return expr; // Should wrap in Grouping, omitted for brevity
 	}
@@ -209,8 +233,7 @@ ExprPtr Parser::Primary()
 
 ExprPtr Parser::ParseExpr()
 {
-	ExprPtr expr = Comma();
-	return expr;
+	return Expression();
 }
 
 std::vector<StatPtr> Parser::Parse()
@@ -228,6 +251,10 @@ StatPtr Parser::Statment()
 	if (Match(TokenType::PRINT))
 	{
 		return PrintStatement();
+	}
+	else if (Match(TokenType::LEFT_BRACE))
+	{
+		return BlockStatement();
 	}
 	return ExpressionStatment();
 }
@@ -252,7 +279,7 @@ StatPtr Parser::VarDeclaration()
 	ExprPtr initializer = nullptr;
 	if (Match(TokenType::EQUAL))
 	{
-		initializer = Comma();
+		initializer = Assignment();
 	}
 	Consume(TokenType::SEMICOLON, "Expect ';' after variable declaration.");
 	return Var::Create(name, initializer);
@@ -260,14 +287,25 @@ StatPtr Parser::VarDeclaration()
 
 StatPtr Parser::PrintStatement()
 {
-	ExprPtr expr = Comma();
+	ExprPtr expr = Assignment();
 	Consume(TokenType::SEMICOLON, "Expect ';' after value.");
 	return Print::Create(expr);
 }
 
+StatPtr Parser::BlockStatement()
+{
+	std::vector<StatPtr> statements;
+	while (!Check(TokenType::RIGHT_BRACE) && !IsAtEnd())
+	{
+		statements.push_back(Declaration());
+	}
+	Consume(TokenType::RIGHT_BRACE, "Expect '}' after block.");
+	return Block::Create(statements);
+}
+
 StatPtr Parser::ExpressionStatment()
 {
-	ExprPtr expr = Comma();
+	ExprPtr expr = Assignment();
 	Consume(TokenType::SEMICOLON, "Expect ';' after value.");
 	return Expression::Create(expr);
 }

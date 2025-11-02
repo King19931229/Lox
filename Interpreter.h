@@ -10,13 +10,16 @@
 class Interpreter : public ExprVisitor<ValuePtr>, public StatVisitor<bool>
 {
 public:
+	Interpreter();
+	~Interpreter();
 	ValuePtr InterpretExpr(const ExprPtr& expr);
 	void Interpret(const std::vector<StatPtr>& statements);
-protected:
-	Environment environment;
-
 	std::string Stringify(ValuePtr value);
 	bool Trueify(ValuePtr value);
+protected:
+	Environment* environment = nullptr;
+
+	void ExecuteBlock(const std::vector<StatPtr>& statements, Environment* newEnv);
 
 	ValuePtr Evaluate(const ExprPtr& expr);
 
@@ -32,9 +35,13 @@ protected:
 
 	virtual ValuePtr DoVisitVariableExpr(const Variable* Expr) override;	
 
+	virtual ValuePtr DoVisitAssignExpr(const Assign* Expr) override;
+
 	virtual bool DoVisitExpressionStat(const Expression* Stat) override;
 
 	virtual bool DoVisitPrintStat(const Print* Stat) override;
 
 	virtual bool DoVisitVarStat(const Var* Stat) override;
+
+	virtual bool DoVisitBlockStat(const Block* Stat) override;
 };

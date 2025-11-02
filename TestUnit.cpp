@@ -9,6 +9,10 @@
 #include <iostream> // 用于捕获 cout
 #include <sstream>  // 用于捕获 cout
 
+#ifdef _WIN32
+#include <windows.h> // 包含 Windows API 用于控制台颜色
+#endif
+
 void TestUnit::RunScannerTest()
 {
 	std::string source = R"lox(
@@ -122,7 +126,7 @@ void TestUnit::RunExpressionInterpreterTest()
 		{ "!true", "false" },
 		{ "!false", "true" },
 		{ "!nil", "true" },
-		{ "!0", "false" },
+		{ "!0", "true" },
 		{ "!1", "false" },
 		{ "!\"\"", "true" },
 		{ "!\"hello\"", "false" },
@@ -177,6 +181,16 @@ void TestUnit::RunExpressionInterpreterTest()
 
 	Interpreter interpreter;
 
+#ifdef _WIN32
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	WORD saved_attributes;
+	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
+	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
+	{
+		saved_attributes = consoleInfo.wAttributes;
+	}
+#endif
+
 	for (const auto& test : testCases)
 	{
 		printf("--- Testing: \"%s\" ---\n", test.first.c_str());
@@ -205,7 +219,13 @@ void TestUnit::RunExpressionInterpreterTest()
 		}
 		else
 		{
+#ifdef _WIN32
+			SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+#endif
 			printf("  [FAIL] Expected: %s, Got: %s\n", test.second.c_str(), resultString.c_str());
+#ifdef _WIN32
+			SetConsoleTextAttribute(hConsole, saved_attributes);
+#endif
 		}
 		printf("----------------------------------------\n\n");
 	}
@@ -282,6 +302,7 @@ void TestUnit::RunStatementInterpreterTest()
 		// 3. 变量声明和赋值实现
 		{ "var a = 10; a + 20;", "" },
 		{ "var msg = \"test\"; print msg;", "test\n" },
+		{ "var x = 5; x = x + 10; print x;", "15\n" },
 
 		// 4. 多条语句
 		{ "print 1; print 2; print 3;", "1\n2\n3\n" },
@@ -290,20 +311,31 @@ void TestUnit::RunStatementInterpreterTest()
 		// 5. 解析错误
 		{ "print 123", "Parse Error" }, // 缺少分号
 
-		// --- 以下为占位符，当你的解释器支持这些功能时可以取消注释 ---
 		// 6. 块作用域
-		// { "{ print 1; print 2; }", "1\n2\n" },
+		{ "{ print 1; print 2; }", "1\n2\n" },
+		{ "var a = 5; { var a = 10; print a; } print a;", "10\n5\n" },
+		{ "var a = 10; { var a = a + 20; print a; } print a;", "30\n10\n" },
 
 		// 7. 变量声明与赋值
-		// { "var a = 10; print a;", "10\n" },
-		// { "var a = 1; a = 2; print a;", "2\n" },
-		// { "var a = \"hello\"; var b = \" world\"; print a + b;", "hello world\n" },
+		{ "var a = 10; print a;", "10\n" },
+		{ "var a = 1; a = 2; print a;", "2\n" },
+		{ "var a = \"hello\"; var b = \" world\"; print a + b;", "hello world\n" },
 
 		// 8. 条件语句
 		// { "if (true) print \"yes\";", "yes\n" },
 		// { "if (false) print \"yes\"; else print \"no\";", "no\n" },
 		// { "var a = 1; if (a > 0) { print \"positive\"; }", "positive\n" },
 	};
+
+#ifdef _WIN32
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	WORD saved_attributes;
+	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
+	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
+	{
+		saved_attributes = consoleInfo.wAttributes;
+	}
+#endif
 
 	for (const auto& test : testCases)
 	{
@@ -321,7 +353,13 @@ void TestUnit::RunStatementInterpreterTest()
 		}
 		else
 		{
+#ifdef _WIN32
+			SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+#endif
 			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
+#ifdef _WIN32
+			SetConsoleTextAttribute(hConsole, saved_attributes);
+#endif
 		}
 		printf("----------------------------------------\n\n");
 	}

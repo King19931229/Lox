@@ -204,7 +204,22 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 		if (typePart.empty() || namePart.empty()) continue;
 
 		// 成员类型：Token/Lexeme 保持原样，其它类型追加 Ptr
-		std::string memberType = (typePart == "Token" || typePart == "Lexeme") ? typePart : (typePart + "Ptr");
+		std::string memberType;
+		if (typePart == "Token" || typePart == "Lexeme")
+		{
+			memberType = typePart;
+		}
+		else if (typePart.rfind("List<", 0) == 0)
+		{
+			size_t start = sizeof("List<") - 1;
+			size_t end = typePart.find(">");
+			std::string innerType = typePart.substr(start, end - start);
+			memberType = "std::vector<" + innerType + "Ptr>";
+		}
+		else
+		{
+			memberType = typePart + "Ptr";
+		}
 
 		typeList.push_back(memberType);
 		nameList.push_back(namePart);

@@ -1,10 +1,12 @@
 #pragma once
 #include <memory>
+#include <vector>
 #include "TokenType.h"
 
 struct Expression;
 struct Print;
 struct Var;
+struct Block;
 struct Stat;
 
 struct IStatVisitor
@@ -13,6 +15,7 @@ struct IStatVisitor
 	virtual void VisitExpressionStat(const Expression* Stat) = 0;
 	virtual void VisitPrintStat(const Print* Stat) = 0;
 	virtual void VisitVarStat(const Var* Stat) = 0;
+	virtual void VisitBlockStat(const Block* Stat) = 0;
 };
 
 template<typename R>
@@ -25,11 +28,13 @@ struct StatVisitor : public IStatVisitor
 	void VisitExpressionStat(const Expression* Stat) override { result = DoVisitExpressionStat(Stat); }
 	void VisitPrintStat(const Print* Stat) override { result = DoVisitPrintStat(Stat); }
 	void VisitVarStat(const Var* Stat) override { result = DoVisitVarStat(Stat); }
+	void VisitBlockStat(const Block* Stat) override { result = DoVisitBlockStat(Stat); }
 	
 	protected:
 	virtual R DoVisitExpressionStat(const Expression* Stat) = 0;
 	virtual R DoVisitPrintStat(const Print* Stat) = 0;
 	virtual R DoVisitVarStat(const Var* Stat) = 0;
+	virtual R DoVisitBlockStat(const Block* Stat) = 0;
 };
 
 
@@ -115,5 +120,27 @@ struct Var : public Stat
 	void Accept(IStatVisitor& visitor) const override
 	{
 		visitor.VisitVarStat(this);
+	}
+};
+struct Block;
+typedef std::shared_ptr<Block> BlockPtr;
+
+struct Block : public Stat
+{
+	std::vector<StatPtr> statements;
+	
+	Block(const std::vector<StatPtr>& inStatements)
+	{
+		this->statements = inStatements;
+	}
+	
+	static BlockPtr Create(const std::vector<StatPtr>& inStatements)
+	{
+		return std::make_shared<Block>(inStatements);
+	}
+	
+	void Accept(IStatVisitor& visitor) const override
+	{
+		visitor.VisitBlockStat(this);
 	}
 };

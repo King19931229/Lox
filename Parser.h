@@ -57,6 +57,7 @@ protected:
 		return false;
 	}
 
+	ExprPtr Assignment();
 	ExprPtr Comma();
 	ExprPtr Ternary();
 	ExprPtr Equality();
@@ -65,15 +66,23 @@ protected:
 	ExprPtr Factor();
 	ExprPtr Unary();
 	ExprPtr Primary();
+	ExprPtr Expression();
 
 	StatPtr Declaration();
 	StatPtr VarDeclaration();
 	StatPtr Statment();
 	StatPtr PrintStatement();
+	StatPtr BlockStatement();
 	StatPtr ExpressionStatment();
 public:
 	Parser(const std::vector<Token>& inTokens);
 	~Parser();
+
+	inline void Reset()
+	{
+		current = 0;
+		error = false;
+	}
 
 	inline bool HasError() const
 	{

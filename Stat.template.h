@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <vector>
 #include "TokenType.h"
 
 $(VISITOR_DEFINE_BODY)

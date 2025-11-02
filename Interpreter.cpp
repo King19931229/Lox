@@ -1,6 +1,16 @@
 #include "Interpreter.h"
-#include "Environment.h" // 从 .h 文件移动至此
-#include <stdexcept>     // 从 .h 文件移动至此
+#include "Environment.h"
+#include <stdexcept>
+
+Interpreter::Interpreter()
+	: environment(new Environment())
+{
+}
+
+Interpreter::~Interpreter()
+{
+	delete environment;
+}
 
 ValuePtr Interpreter::InterpretExpr(const ExprPtr& expr)
 {
@@ -73,7 +83,9 @@ ValuePtr Interpreter::DoVisitBinaryExpr(const Binary* expr)
 			return right;
 	}
 
-	throw std::runtime_error("Interpreter error: Unknown binary operator.");
+	// 补上行/列信息用于更精确的运行时错误定位
+	Lox::GetInstance().RuntimeError(expr->op.line, expr->op.column, "Unknown binary operator.");
+	return ErrorValue::Create("Unknown binary operator.");
 }
 
 ValuePtr Interpreter::DoVisitGroupingExpr(const Grouping* expr)
@@ -105,7 +117,9 @@ ValuePtr Interpreter::DoVisitLiteralExpr(const Literal* expr)
 		case TokenType::STRING:
 			return StringValue::Create(token.lexeme);
 		default:
-			throw std::runtime_error("Interpreter error: Unexpected literal type.");
+			// 补上行/列信息用于更精确的运行时错误定位
+			Lox::GetInstance().RuntimeError(token.line, token.column, "Unexpected literal type.");
+			return ErrorValue::Create("Unexpected literal type.");
 	}
 }
 
@@ -119,12 +133,20 @@ ValuePtr Interpreter::DoVisitUnaryExpr(const Unary* expr)
 		case TokenType::MINUS: return -right;
 	}
 
-	throw std::runtime_error("Interpreter error: Unknown unary operator.");
+	Lox::GetInstance().RuntimeError(expr->op.line, expr->op.column, "Unknown unary operator.");
+	return ErrorValue::Create("Unknown unary operator.");
 }
 
 ValuePtr Interpreter::DoVisitVariableExpr(const Variable* Expr)
 {
-	return environment.Get(Expr->name.lexeme);
+	return environment->Get(Expr->name.lexeme);
+}
+
+ValuePtr Interpreter::DoVisitAssignExpr(const Assign* Expr)
+{
+	ValuePtr value = Evaluate(Expr->value);
+	environment->Assign(Expr->name.lexeme, value, Expr->name.line, Expr->name.column);
+	return value;
 }
 
 bool Interpreter::DoVisitExpressionStat(const Expression* Stat)
@@ -142,6 +164,29 @@ bool Interpreter::DoVisitPrintStat(const Print* Stat)
 
 bool Interpreter::DoVisitVarStat(const Var* Stat)
 {
-	environment.Define(Stat->name.lexeme, Evaluate(Stat->initializer));
+	if (Stat->initializer)
+	{
+		environment->Define(Stat->name.lexeme, Evaluate(Stat->initializer));
+	}
+	else
+	{
+		environment->Define(Stat->name.lexeme, ErrorValue::Create("Uninitialized variable."));
+	}
+	return true;
+}
+
+void Interpreter::ExecuteBlock(const std::vector<StatPtr>& statements, Environment* newEnv)
+{
+	Environment* oldEnv = environment;
+	environment = newEnv;
+	Interpret(statements);
+	environment = oldEnv;
+}
+
+bool Interpreter::DoVisitBlockStat(const Block* Stat)
+{
+	Environment* newEnv = new Environment(environment);
+	ExecuteBlock(Stat->statements, newEnv);
+	delete newEnv;
 	return true;
 }

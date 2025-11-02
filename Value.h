@@ -214,18 +214,24 @@ DEFINE_COMPARISON_OPERATOR(>=, "comparison")
 
 inline bool IsEqual(const ValuePtr& left, const ValuePtr& right)
 {
+	// 如果都是数字类型，则转换为 float 进行比较
+	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
+	{
+		return static_cast<float>(*left) == static_cast<float>(*right);
+	}
+
+	// 否则，要求类型必须完全相同
 	if (left->type != right->type)
 	{
 		return false;
 	}
+
 	switch (left->type)
 	{
 		case TYPE_NIL:    return true;
-		case TYPE_INT:    return static_cast<int>(*left) == static_cast<int>(*right);
-		case TYPE_FLOAT:  return static_cast<float>(*left) == static_cast<float>(*right);
 		case TYPE_BOOL:   return static_cast<bool>(*left) == static_cast<bool>(*right);
 		case TYPE_STRING: return static_cast<std::string>(*left) == static_cast<std::string>(*right);
-		default:          return false;
+		default:          return false; // 数字类型已在上面处理
 	}
 }
 
