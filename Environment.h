@@ -7,10 +7,53 @@ class Environment
 protected:
 	std::unordered_map<std::string, ValuePtr> values;
 	Environment* enclosing = nullptr;
+	ValuePtr returnValue = nullptr;
+	bool isFunctionEnv = false;
 public:
-	Environment(Environment* parent = nullptr)
-		: enclosing(parent)
+	Environment(Environment* parent = nullptr, bool isFunction = false)
+		: enclosing(parent), isFunctionEnv(isFunction)
 	{
+	}
+	Environment* Clone()
+	{
+		Environment* newEnv = new Environment(enclosing, isFunctionEnv);
+		newEnv->values = values;
+		return newEnv;
+	}
+	Environment* GetFunctionEnv()
+	{
+		Environment* env = this;
+		while (env)
+		{
+			if (env->isFunctionEnv)
+			{
+				return env;
+			}
+			env = env->enclosing;
+		}
+		return nullptr;
+	}
+	void SetReturnValue(ValuePtr value)
+	{
+		Environment* funcEnv = GetFunctionEnv();
+		if (funcEnv)
+		{
+			funcEnv->returnValue = value;
+		}
+	}
+	bool HasReturnValue()
+	{
+		Environment* funcEnv = GetFunctionEnv();
+		return funcEnv && funcEnv->returnValue != nullptr;
+	}
+	ValuePtr GetReturnValue()
+	{
+		Environment* funcEnv = GetFunctionEnv();
+		if (funcEnv)
+		{
+			return funcEnv->returnValue;
+		}
+		return nullptr;
 	}
 	void Define(const std::string& name, ValuePtr value, size_t line = 0, size_t column = 0)
 	{

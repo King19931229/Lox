@@ -1,9 +1,11 @@
+#define GENERATE_AST_CPP
 #include "GenerateAST.h"
 #include "Util.h"
 #include <cstdio>
 #include <cstdarg>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 class ContentWriter
 {
@@ -193,6 +195,8 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 	// 拆分为类型和变量名，并生成成员声明
 	std::vector<std::string> typeList;
 	std::vector<std::string> nameList;
+	// 成员类型：Token/Lexeme 保持原样，其它类型追加 Ptr
+	static const std::unordered_set<std::string> noPtrTypes = { "Token", "Lexeme" };
 
 	for (const std::string& field : fieldArray)
 	{
@@ -203,9 +207,8 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 		std::string namePart = Util::Trim(field.substr(sep + 1));
 		if (typePart.empty() || namePart.empty()) continue;
 
-		// 成员类型：Token/Lexeme 保持原样，其它类型追加 Ptr
 		std::string memberType;
-		if (typePart == "Token" || typePart == "Lexeme")
+		if (noPtrTypes.count(typePart))
 		{
 			memberType = typePart;
 		}
@@ -214,7 +217,14 @@ std::string GenerateAST::DefineType(const std::string& baseName, const std::stri
 			size_t start = sizeof("List<") - 1;
 			size_t end = typePart.find(">");
 			std::string innerType = typePart.substr(start, end - start);
-			memberType = "std::vector<" + innerType + "Ptr>";
+			if (noPtrTypes.count(innerType))
+			{
+				memberType = "std::vector<" + innerType + ">";
+			}
+			else
+			{
+				memberType = "std::vector<" + innerType + "Ptr>";
+			}
 		}
 		else
 		{

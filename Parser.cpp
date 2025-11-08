@@ -45,17 +45,17 @@ void Parser::Synchronize()
 		if (Previous().type == TokenType::SEMICOLON) return;
 		switch (Peek().type)
 		{
-		case TokenType::CLASS:
-		case TokenType::FUN:
-		case TokenType::VAR:
-		case TokenType::FOR:
-		case TokenType::IF:
-		case TokenType::WHILE:
-		case TokenType::PRINT:
-		case TokenType::RETURN:
-			return;
-		default:
-			break;
+			case TokenType::CLASS:
+			case TokenType::FUN:
+			case TokenType::VAR:
+			case TokenType::FOR:
+			case TokenType::IF:
+			case TokenType::WHILE:
+			case TokenType::PRINT:
+			case TokenType::RETURN:
+				return;
+			default:
+				break;
 		}
 		Advance();
 	}
@@ -224,7 +224,62 @@ ExprPtr Parser::Unary()
 		return Unary::Create(op, right);
 	}
 
-	return Primary();
+	return Call();
+}
+
+std::vector<ExprPtr> Parser::FinishArguments(ExprPtr expr)
+{
+	if (Binary* binary = dynamic_cast<Binary*>(expr.get()))
+	{
+		if (binary->op.type == TokenType::COMMA)
+		{
+			std::vector<ExprPtr> args;
+			auto leftArgs = FinishArguments(binary->left);
+			args.insert(args.end(), leftArgs.begin(), leftArgs.end());
+			auto rightArgs = FinishArguments(binary->right);
+			args.insert(args.end(), rightArgs.begin(), rightArgs.end());
+			return args;
+			return args;
+		}
+	}
+	return { expr };
+}
+
+ExprPtr Parser::FinishCall(const ExprPtr& callee)
+{
+	std::vector<ExprPtr> arguments;
+	if (!Check(TokenType::RIGHT_PAREN))
+	{
+		do
+		{
+			std::vector<ExprPtr> newArgs = FinishArguments(Expression());
+			arguments.insert(arguments.end(), newArgs.begin(), newArgs.end());
+			if (arguments.size() >= 255)
+			{
+				Error(Peek(), "Can't have more than 255 arguments.");
+			}
+		} while (Match(TokenType::COMMA));
+	}
+	Token paren = Consume(TokenType::RIGHT_PAREN, "Expect ')' after arguments.");
+	return Call::Create(callee, paren, arguments);
+}
+
+ExprPtr Parser::Call()
+{
+	ExprPtr expr = Primary();
+	// Handle continued calls
+	while (true)
+	{
+		if (Match(TokenType::LEFT_PAREN))
+		{
+			expr = FinishCall(expr);
+		}
+		else
+		{
+			break;
+		}
+	}
+	return expr;
 }
 
 ExprPtr Parser::Expression()
@@ -249,6 +304,30 @@ ExprPtr Parser::Primary()
 	if (Match(TokenType::IDENTIFIER))
 	{
 		return Variable::Create(Previous());
+	}
+
+	// Function expression (anonymous function)
+	if (Match(TokenType::FUN))
+	{
+		Token keyword = Previous();
+		Consume(TokenType::LEFT_PAREN, "Expect '(' after 'fun'.");
+		std::vector<Token> parameters;
+		if (!Check(TokenType::RIGHT_PAREN))
+		{
+			do
+			{
+				if (parameters.size() >= 255)
+				{
+					Error(Peek(), "Can't have more than 255 parameters.");
+				}
+				Consume(TokenType::IDENTIFIER, "Expect parameter name.");
+				parameters.push_back(Previous());
+			} while (Match(TokenType::COMMA));
+		}
+		Consume(TokenType::RIGHT_PAREN, "Expect ')' after parameters.");
+		Consume(TokenType::LEFT_BRACE, "Expect '{' before function body.");
+		StatPtr body = BlockStatement();
+		return Lambda::Create(keyword, parameters, dynamic_cast<Block*>(body.get())->statements);
 	}
 
 	Error(Peek(), "Expect expression.");
@@ -284,6 +363,10 @@ StatPtr Parser::Statment()
 	{
 		return IfStatement();
 	}
+	else if(Match(TokenType::RETURN))
+	{
+		return ReturnStatement();
+	}
 	return ExpressionStatment();
 }
 
@@ -292,6 +375,10 @@ StatPtr Parser::Declaration()
 	if (Match(TokenType::VAR))
 	{
 		return VarDeclaration();
+	}
+	else if(Match(TokenType::FUN))
+	{
+		return FunDeclaration("function");
 	}
 	else
 	{
@@ -311,6 +398,30 @@ StatPtr Parser::VarDeclaration()
 	}
 	Consume(TokenType::SEMICOLON, "Expect ';' after variable declaration.");
 	return Var::Create(name, initializer);
+}
+
+StatPtr Parser::FunDeclaration(const std::string& kind)
+{
+	Consume(TokenType::IDENTIFIER, "Expect " + kind + " name.");
+	Token name = Previous();
+	Consume(TokenType::LEFT_PAREN, "Expect '(' after function name.");
+	std::vector<Token> parameters;
+	if (!Check(TokenType::RIGHT_PAREN))
+	{
+		do
+		{
+			if (parameters.size() >= 255)
+			{
+				Error(Peek(), "Can't have more than 255 parameters.");
+			}
+			Consume(TokenType::IDENTIFIER, "Expect parameter name.");
+			parameters.push_back(Previous());
+		} while (Match(TokenType::COMMA));
+	}
+	Consume(TokenType::RIGHT_PAREN, "Expect ')' after parameters.");
+	Consume(TokenType::LEFT_BRACE, "Expect '{' before function body.");
+	StatPtr body = BlockStatement();
+	return Function::Create(name, parameters, dynamic_cast<Block*>(body.get())->statements);
 }
 
 StatPtr Parser::PrintStatement()
@@ -341,6 +452,18 @@ StatPtr Parser::IfStatement()
 		elseBranch = Declaration();
 	}
 	return If::Create(condition, thenBranch, elseBranch);
+}
+
+StatPtr Parser::ReturnStatement()
+{
+	Token keyword = Previous();
+	ExprPtr value = nullptr;
+	if (!Check(TokenType::SEMICOLON))
+	{
+		value = Expression();
+	}
+	Consume(TokenType::SEMICOLON, "Expect ';' after return value.");
+	return Return::Create(keyword, value);
 }
 
 StatPtr Parser::ExpressionStatment()

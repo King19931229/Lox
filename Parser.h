@@ -57,6 +57,9 @@ protected:
 		return false;
 	}
 
+	std::vector<ExprPtr> FinishArguments(ExprPtr expr);
+	ExprPtr FinishCall(const ExprPtr& callee);
+
 	ExprPtr Expression();
 	ExprPtr Assignment();
 	ExprPtr Or();
@@ -68,14 +71,17 @@ protected:
 	ExprPtr Term();
 	ExprPtr Factor();
 	ExprPtr Unary();
+	ExprPtr Call();
 	ExprPtr Primary();
 
 	StatPtr Declaration();
 	StatPtr VarDeclaration();
+	StatPtr FunDeclaration(const std::string& kind);
 	StatPtr Statment();
 	StatPtr PrintStatement();
 	StatPtr BlockStatement();
 	StatPtr IfStatement();
+	StatPtr ReturnStatement();
 	StatPtr ExpressionStatment();
 public:
 	Parser(const std::vector<Token>& inTokens);

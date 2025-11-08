@@ -155,9 +155,11 @@
     <ClInclude Include="Environment.h" />
     <ClInclude Include="Expr.h" />
     <ClInclude Include="Expr.template.h" />
+    <ClInclude Include="ForwardDeclaration.h" />
     <ClInclude Include="GenerateAST.h" />
     <ClInclude Include="Interpreter.h" />
     <ClInclude Include="Lox.h" />
+    <ClInclude Include="LoxCallable.h" />
     <ClInclude Include="Parser.h" />
     <ClInclude Include="Scanner.h" />
     <ClInclude Include="Stat.h" />

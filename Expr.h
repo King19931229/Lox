@@ -1,5 +1,7 @@
 #pragma once
 #include <memory>
+#include <vector>
+#include "ForwardDeclaration.h"
 #include "TokenType.h"
 
 struct Ternary;
@@ -10,6 +12,8 @@ struct Unary;
 struct Variable;
 struct Assign;
 struct Logical;
+struct Call;
+struct Lambda;
 struct Expr;
 
 struct IExprVisitor
@@ -23,6 +27,8 @@ struct IExprVisitor
 	virtual void VisitVariableExpr(const Variable* Expr) = 0;
 	virtual void VisitAssignExpr(const Assign* Expr) = 0;
 	virtual void VisitLogicalExpr(const Logical* Expr) = 0;
+	virtual void VisitCallExpr(const Call* Expr) = 0;
+	virtual void VisitLambdaExpr(const Lambda* Expr) = 0;
 };
 
 template<typename R>
@@ -40,6 +46,8 @@ struct ExprVisitor : public IExprVisitor
 	void VisitVariableExpr(const Variable* Expr) override { result = DoVisitVariableExpr(Expr); }
 	void VisitAssignExpr(const Assign* Expr) override { result = DoVisitAssignExpr(Expr); }
 	void VisitLogicalExpr(const Logical* Expr) override { result = DoVisitLogicalExpr(Expr); }
+	void VisitCallExpr(const Call* Expr) override { result = DoVisitCallExpr(Expr); }
+	void VisitLambdaExpr(const Lambda* Expr) override { result = DoVisitLambdaExpr(Expr); }
 	
 	protected:
 	virtual R DoVisitTernaryExpr(const Ternary* Expr) = 0;
@@ -50,6 +58,8 @@ struct ExprVisitor : public IExprVisitor
 	virtual R DoVisitVariableExpr(const Variable* Expr) = 0;
 	virtual R DoVisitAssignExpr(const Assign* Expr) = 0;
 	virtual R DoVisitLogicalExpr(const Logical* Expr) = 0;
+	virtual R DoVisitCallExpr(const Call* Expr) = 0;
+	virtual R DoVisitLambdaExpr(const Lambda* Expr) = 0;
 };
 
 
@@ -60,7 +70,6 @@ struct Expr
 	// Accept 方法现在接受 IExprVisitor
 	virtual void Accept(IExprVisitor& visitor) const = 0;
 };
-typedef std::shared_ptr<Expr> ExprPtr;
 
 // Visitor -> ExprVisitor
 template<typename R>
@@ -264,5 +273,57 @@ struct Logical : public Expr
 	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitLogicalExpr(this);
+	}
+};
+struct Call;
+typedef std::shared_ptr<Call> CallPtr;
+
+struct Call : public Expr
+{
+	ExprPtr callee;
+	Token paren;
+	std::vector<ExprPtr> arguments;
+	
+	Call(const ExprPtr& inCallee, const Token& inParen, const std::vector<ExprPtr>& inArguments)
+	{
+		this->callee = inCallee;
+		this->paren = inParen;
+		this->arguments = inArguments;
+	}
+	
+	static CallPtr Create(const ExprPtr& inCallee, const Token& inParen, const std::vector<ExprPtr>& inArguments)
+	{
+		return std::make_shared<Call>(inCallee, inParen, inArguments);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitCallExpr(this);
+	}
+};
+struct Lambda;
+typedef std::shared_ptr<Lambda> LambdaPtr;
+
+struct Lambda : public Expr
+{
+	Token keyword;
+	std::vector<Token> params;
+	std::vector<StatPtr> body;
+	
+	Lambda(const Token& inKeyword, const std::vector<Token>& inParams, const std::vector<StatPtr>& inBody)
+	{
+		this->keyword = inKeyword;
+		this->params = inParams;
+		this->body = inBody;
+	}
+	
+	static LambdaPtr Create(const Token& inKeyword, const std::vector<Token>& inParams, const std::vector<StatPtr>& inBody)
+	{
+		return std::make_shared<Lambda>(inKeyword, inParams, inBody);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitLambdaExpr(this);
 	}
 };

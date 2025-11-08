@@ -1,15 +1,42 @@
 #include "Interpreter.h"
 #include "Environment.h"
-#include <stdexcept>
+#include "LoxCallable.h"
+#include <assert.h>
 
 Interpreter::Interpreter()
-	: environment(new Environment())
+	: globalEnvironment(new Environment())
+	, environment(globalEnvironment)
 {
+	struct Clock : public LoxCallable
+	{
+		Clock()
+		{
+			this->type = TYPE_CALLABLE;
+		}
+		int Arity() const override
+		{
+			return 0;
+		}
+		ValuePtr Call(Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override
+		{
+			return FloatValue::Create(static_cast<float>(time(nullptr)));
+		}
+		operator std::string() const override
+		{
+			return "<native fn>";
+		}
+		static ValuePtr Create()
+		{
+			return std::make_shared<Clock>();
+		}
+	};
+	globalEnvironment->Define("clock", Clock::Create());
 }
 
 Interpreter::~Interpreter()
 {
-	delete environment;
+	assert(environment == globalEnvironment && "Environment stack not balanced on Interpreter destruction.");
+	delete globalEnvironment;
 }
 
 ValuePtr Interpreter::InterpretExpr(const ExprPtr& expr)
@@ -171,6 +198,39 @@ ValuePtr Interpreter::DoVisitLogicalExpr(const Logical* expr)
 	return Evaluate(expr->right);
 }
 
+ValuePtr Interpreter::DoVisitCallExpr(const Call* expr)
+{
+	ValuePtr callee = Evaluate(expr->callee);
+	std::vector<ValuePtr> arguments;
+	for (const ExprPtr& argumentExpr : expr->arguments)
+	{
+		arguments.push_back(Evaluate(argumentExpr));
+	}
+	
+	LoxCallable* function = dynamic_cast<LoxCallable*>(callee.get());
+	if (!function)
+	{
+		Lox::GetInstance().RuntimeError(expr->paren.line, expr->paren.column, "Can only call functions and classes.");
+		return ErrorValue::Create("Can only call functions and classes.");
+	}
+	else
+	{
+		if (arguments.size() != function->Arity())
+		{
+			Lox::GetInstance().RuntimeError(expr->paren.line, expr->paren.column, "Argument count mismatch, expected %d but got %d.", function->Arity(), arguments.size());
+			return ErrorValue::Create("Argument count mismatch.");
+		}
+		return function->Call(this, arguments);
+	}
+}
+
+ValuePtr Interpreter::DoVisitLambdaExpr(const Lambda* expr)
+{
+	ValuePtr lambda = LoxLambda::Create(expr);
+	dynamic_cast<LoxLambda*>(lambda.get())->closure = environment->Clone();
+	return lambda;
+}
+
 bool Interpreter::DoVisitExpressionStat(const Expression* stat)
 {
 	Evaluate(stat->expression);
@@ -203,9 +263,67 @@ void Interpreter::ExecuteBlock(const std::vector<StatPtr>& statements, Environme
 	environment = newEnv;
 	for (StatPtr stat : statements)
 	{
+		if (environment->HasReturnValue())
+		{
+			break;
+		}
 		Execute(stat);
 	}
 	environment = oldEnv;
+}
+
+ValuePtr LoxFunction::Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
+{
+	return interpreter->CallFunction(this, arguments);
+}
+
+ValuePtr Interpreter::CallFunction(const LoxFunction* function, const std::vector<ValuePtr>& arguments)
+{
+	Environment* functionEnv = new Environment(function->closure, true);
+	for (size_t i = 0; i < function->declaration->params.size(); ++i)
+	{
+		functionEnv->Define(function->declaration->params[i].lexeme, arguments[i], function->declaration->params[i].line, function->declaration->params[i].column);
+	}
+	ExecuteBlock(function->declaration->body, functionEnv);
+
+	ValuePtr returnValue = nullptr;
+	if (functionEnv->HasReturnValue())
+	{
+		returnValue = functionEnv->GetReturnValue();
+	}
+	else
+	{
+		returnValue = NilValue::Create();
+	}
+
+	delete functionEnv;
+	return returnValue;
+}
+
+ValuePtr LoxLambda::Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
+{
+	return interpreter->CallLambda(this, arguments);
+}
+
+ValuePtr Interpreter::CallLambda(const LoxLambda* lambda, const std::vector<ValuePtr>& arguments)
+{
+	Environment* lambdaEnv = new Environment(lambda->closure, true);
+	for (size_t i = 0; i < lambda->declaration->params.size(); ++i)
+	{
+		lambdaEnv->Define(lambda->declaration->params[i].lexeme, arguments[i], lambda->declaration->params[i].line, lambda->declaration->params[i].column);
+	}
+	ExecuteBlock(lambda->declaration->body, lambdaEnv);
+	ValuePtr returnValue = nullptr;
+	if (lambdaEnv->HasReturnValue())
+	{
+		returnValue = lambdaEnv->GetReturnValue();
+	}
+	else
+	{
+		returnValue = NilValue::Create();
+	}
+	delete lambdaEnv;
+	return returnValue;
 }
 
 bool Interpreter::DoVisitBlockStat(const Block* stat)
@@ -213,6 +331,29 @@ bool Interpreter::DoVisitBlockStat(const Block* stat)
 	Environment* newEnv = new Environment(environment);
 	ExecuteBlock(stat->statements, newEnv);
 	delete newEnv;
+	return true;
+}
+
+bool Interpreter::DoVisitFunctionStat(const Function* stat)
+{
+	ValuePtr function = LoxFunction::Create(stat);
+	environment->Define(stat->name.lexeme, function, stat->name.line, stat->name.column);
+	dynamic_cast<LoxFunction*>(function.get())->closure = environment->Clone();
+	return true;
+}
+
+bool Interpreter::DoVisitReturnStat(const Return* stat)
+{
+	ValuePtr value = NilValue::Create();
+	if (stat->value)
+	{
+		value = Evaluate(stat->value);
+	}
+	else // void return
+	{
+		value = NilValue::Create();
+	}
+	environment->SetReturnValue(value);
 	return true;
 }
 

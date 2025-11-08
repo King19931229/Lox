@@ -12,6 +12,7 @@ enum ValueType
 	TYPE_STRING,
 	TYPE_BOOL,
 	TYPE_NIL,
+	TYPE_CALLABLE,
 	TYPE_ERROR // 新增：错误类型
 };
 

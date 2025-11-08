@@ -17,11 +17,17 @@ public:
 	std::string Stringify(ValuePtr value);
 	bool Trueify(ValuePtr value);
 protected:
+	friend struct LoxLambda;
+	friend struct LoxFunction;
+	Environment* globalEnvironment = nullptr;
 	Environment* environment = nullptr;
 
-	ValuePtr Evaluate(const ExprPtr& expr);
-	void Execute(const StatPtr& stat);
+	ValuePtr CallFunction(const LoxFunction* function, const std::vector<ValuePtr>& arguments);
+	ValuePtr CallLambda(const LoxLambda* lambda, const std::vector<ValuePtr>& arguments);
 	void ExecuteBlock(const std::vector<StatPtr>& statements, Environment* newEnv);
+
+	ValuePtr Evaluate(const ExprPtr& expr);
+	void Execute(const StatPtr& stat);	
 
 	virtual ValuePtr DoVisitTernaryExpr(const Ternary* expr) override;
 
@@ -39,6 +45,10 @@ protected:
 
 	virtual ValuePtr DoVisitLogicalExpr(const Logical* expr) override;
 
+	virtual ValuePtr DoVisitCallExpr(const Call* expr) override;
+
+	virtual ValuePtr DoVisitLambdaExpr(const Lambda* expr) override;
+
 	virtual bool DoVisitExpressionStat(const Expression* stat) override;
 
 	virtual bool DoVisitPrintStat(const Print* stat) override;
@@ -48,4 +58,8 @@ protected:
 	virtual bool DoVisitBlockStat(const Block* stat) override;
 
 	virtual bool DoVisitIfStat(const If* stat) override;
+
+	virtual bool DoVisitFunctionStat(const Function* stat) override;
+
+	virtual bool DoVisitReturnStat(const Return* stat) override;
 };

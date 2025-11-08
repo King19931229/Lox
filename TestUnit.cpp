@@ -364,3 +364,75 @@ void TestUnit::RunStatementInterpreterTest()
 		printf("----------------------------------------\n\n");
 	}
 }
+
+void TestUnit::RunFunctionInterpreterTest()
+{
+	const std::vector<std::pair<std::string, std::string>> testCases = {
+		// Basic function call
+		{ "fun sayHi() { print \"hi\"; } sayHi();", "hi\n" },
+		// Function with parameters
+		{ "fun echo(a) { print a; } echo(123);", "123\n" },
+		// Scoping with functions
+		{ "var a = \"global\"; fun showA() { print a; } showA();", "global\n" },
+		{ "var a = \"global\"; fun showA() { var a = \"local\"; print a; } showA(); print a;", "local\nglobal\n" },
+		// Recursive function (user request)
+		{ "fun count(n) { if (n > 1) count(n - 1); print n; } count(3);", "1\n2\n3\n" },
+		// Function with return value
+		{ "fun add(x, y) { return x + y; } print add(2, 3);", "5\n" },
+		// Function without return (should return nil)
+		{ "fun noReturn() { print \"no return\"; } var result = noReturn(); print result;", "no return\nnil\n" },
+		// recursive factorial function
+		{ "fun factorial(n) { if (n <= 1) return 1; return n * factorial(n - 1); } print factorial(5);", "120\n" },
+		// complex recursive function: Fibonacci
+		{ "fun fib(n) { if (n <= 1) return n; return fib(n - 1) + fib(n - 2); } print fib(6);", "8\n" },
+		// lambda function test
+		{ "var add = fun(x, y) { return x + y; }; print add(10, 20);", "30\n" },
+		// lambda capturing variable
+		{ "var factor = 3; var multiply = fun(x) { return x * factor; }; print multiply(5);", "15\n" },
+		// pass lambda to a function
+		{ "fun applyFunc(f, value) { return f(value); } var square = fun(x) { return x * x; }; print applyFunc(square, 4);", "16\n" },
+		// call lambda directly
+		{ "var result = (fun(x, y) { return x - y; })(10, 4); print result;", "6\n" },
+		// closure test with nested functions
+		{ "fun outer(x) { fun inner(y) { return x + y; } return inner; } var add5 = outer(5); print add5(10);", "15\n" },
+		// closure capturing variable from outer scope
+		{ "var base = 10; fun makeAdder(n) { return fun(x) { return x + n + base; }; } var add3 = makeAdder(3); print add3(7);", "20\n" },
+	};
+
+#ifdef _WIN32
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	WORD saved_attributes;
+	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
+	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
+	{
+		saved_attributes = consoleInfo.wAttributes;
+	}
+#endif
+
+	for (const auto& test : testCases)
+	{
+		printf("--- Testing Function: \"%s\" ---\n", test.first.c_str());
+
+		std::string capturedOutput = RunWithCapture(test.first);
+
+		// 使用转义函数来美化输出
+		std::string expectedEscaped = EscapeForPrinting(test.second);
+		std::string gotEscaped = EscapeForPrinting(capturedOutput);
+
+		if (capturedOutput == test.second)
+		{
+			printf("  [PASS] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
+		}
+		else
+		{
+#ifdef _WIN32
+			SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+#endif
+			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
+#ifdef _WIN32
+			SetConsoleTextAttribute(hConsole, saved_attributes);
+#endif
+		}
+		printf("----------------------------------------\n\n");
+	}
+}
