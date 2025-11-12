@@ -81,8 +81,11 @@ protected:
 	StatPtr PrintStatement();
 	StatPtr BlockStatement();
 	StatPtr IfStatement();
+	StatPtr WhileStatement();
 	StatPtr ReturnStatement();
 	StatPtr ExpressionStatment();
+	StatPtr ForStatment();
+	StatPtr BreakStatement();
 public:
 	Parser(const std::vector<Token>& inTokens);
 	~Parser();

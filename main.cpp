@@ -28,13 +28,15 @@ int main(int argc, char* argv[])
 		"Call : Expr callee, Token paren, List<Expr> arguments",
 		"Lambda: Token keyword, List<Token> params, List<Stat> body",
 	});
-	generator.DefineAST("G:/Lox/", "Stat",
+	generator.DefineAST("D:/Lox/", "Stat",
 	{
 		"Expression : Expr expression",
 		"Print : Expr expression",
 		"Var : Token name, Expr initializer",
 		"Block : List<Stat> statements",
 		"If : Expr condition, Stat thenBranch, Stat elseBranch",
+		"While : Expr condition, Stat body",
+		"Break : Token keyword",
 		"Function : Token name, List<Token> params, List<Stat> body",
 		"Return: Token keyword, Expr value",
 	});

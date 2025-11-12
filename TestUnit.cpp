@@ -325,6 +325,17 @@ void TestUnit::RunStatementInterpreterTest()
 		{ "if (true) print \"yes\";", "yes\n" },
 		{ "if (false) print \"yes\"; else print \"no\";", "no\n" },
 		{ "var a = 1; if (a > 0) { print \"positive\"; }", "positive\n" },
+
+		// 9. Ñ­»·Óï¾ä
+		{ "var i = 0; while (i < 3) { print i; i = i + 1; }", "0\n1\n2\n" },
+		{ "for (var j = 0; j < 2; j = j + 1) { print j; }", "0\n1\n" },
+		{ "var sum = 0; for (var k = 1; k <= 3; k = k + 1) { sum = sum + k; } print sum;", "6\n" },
+
+		// 10. break
+		{ "var i = 0; while (true) { if (i == 2) { break; } print i; i = i + 1; }", "0\n1\n" },
+		{ "for (var i = 0; i < 2; i = i + 1) { print \"outer\"; for (var j = 0; j < 2; j = j + 1) { print \"inner\"; break; } }", "outer\ninner\nouter\ninner\n" },
+		{ "var i = 0; while (i < 3) { print i; if (i == 1) { break; print 99; } i = i + 1; }", "0\n1\n" },
+
 	};
 
 #ifdef _WIN32

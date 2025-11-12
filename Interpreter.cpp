@@ -3,6 +3,8 @@
 #include "LoxCallable.h"
 #include <assert.h>
 
+#define LOOP_CONTRAL_FAST_RETURN if (loopControl != LOOP_NONE) { return true; }
+
 Interpreter::Interpreter()
 	: globalEnvironment(new Environment())
 	, environment(globalEnvironment)
@@ -233,12 +235,16 @@ ValuePtr Interpreter::DoVisitLambdaExpr(const Lambda* expr)
 
 bool Interpreter::DoVisitExpressionStat(const Expression* stat)
 {
+	LOOP_CONTRAL_FAST_RETURN;
+
 	Evaluate(stat->expression);
 	return true;
 }
 
 bool Interpreter::DoVisitPrintStat(const Print* stat)
 {
+	LOOP_CONTRAL_FAST_RETURN;
+
 	Evaluate(stat->expression);
 	std::cout << Stringify(Evaluate(stat->expression)) << std::endl;
 	return true;
@@ -246,6 +252,8 @@ bool Interpreter::DoVisitPrintStat(const Print* stat)
 
 bool Interpreter::DoVisitVarStat(const Var* stat)
 {
+	LOOP_CONTRAL_FAST_RETURN;
+
 	if (stat->initializer)
 	{
 		environment->Define(stat->name.lexeme, Evaluate(stat->initializer));
@@ -328,6 +336,8 @@ ValuePtr Interpreter::CallLambda(const LoxLambda* lambda, const std::vector<Valu
 
 bool Interpreter::DoVisitBlockStat(const Block* stat)
 {
+	LOOP_CONTRAL_FAST_RETURN;
+
 	Environment* newEnv = new Environment(environment);
 	ExecuteBlock(stat->statements, newEnv);
 	delete newEnv;
@@ -359,6 +369,8 @@ bool Interpreter::DoVisitReturnStat(const Return* stat)
 
 bool Interpreter::DoVisitIfStat(const If* stat)
 {
+	LOOP_CONTRAL_FAST_RETURN;
+
 	ValuePtr value = Evaluate(stat->condition);
 	if (Trueify(value))
 	{
@@ -370,3 +382,30 @@ bool Interpreter::DoVisitIfStat(const If* stat)
 	}
 	return true;
 }
+
+bool Interpreter::DoVisitWhileStat(const While* stat)
+{
+	while (Trueify(Evaluate(stat->condition)))
+	{
+		environment->SetCurrentWhile(stat);
+		Execute(stat->body);
+		if (loopControl == LOOP_BREAK)
+		{
+			loopControl = LOOP_NONE;
+			break;
+		}
+	}
+	environment->SetCurrentWhile(nullptr);
+	return true;
+}
+
+bool Interpreter::DoVisitBreakStat(const Break* stat)
+{
+	if (!environment->GetCurrentWhile())
+	{
+		Lox::GetInstance().RuntimeError(stat->keyword.line, stat->keyword.column, "Break statement not within a loop.");
+		return true;
+	}
+	loopControl = LOOP_BREAK;
+	return true;
+ }

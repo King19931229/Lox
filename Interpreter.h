@@ -24,10 +24,17 @@ protected:
 
 	ValuePtr CallFunction(const LoxFunction* function, const std::vector<ValuePtr>& arguments);
 	ValuePtr CallLambda(const LoxLambda* lambda, const std::vector<ValuePtr>& arguments);
-	void ExecuteBlock(const std::vector<StatPtr>& statements, Environment* newEnv);
+	enum LoopControl
+	{
+		LOOP_CONTINUE,
+		LOOP_BREAK,
+		LOOP_NONE
+	};
+	LoopControl loopControl = LOOP_NONE;
 
 	ValuePtr Evaluate(const ExprPtr& expr);
-	void Execute(const StatPtr& stat);	
+	void Execute(const StatPtr& stat);
+	void ExecuteBlock(const std::vector<StatPtr>& statements, Environment* newEnv);
 
 	virtual ValuePtr DoVisitTernaryExpr(const Ternary* expr) override;
 
@@ -58,6 +65,10 @@ protected:
 	virtual bool DoVisitBlockStat(const Block* stat) override;
 
 	virtual bool DoVisitIfStat(const If* stat) override;
+
+	virtual bool DoVisitWhileStat(const While* stat) override;
+
+	virtual bool DoVisitBreakStat(const Break* stat) override;
 
 	virtual bool DoVisitFunctionStat(const Function* stat) override;
 

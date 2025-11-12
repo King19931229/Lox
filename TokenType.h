@@ -48,6 +48,7 @@
 	TOKEN(TRUE,           "true")        /* true */ \
 	TOKEN(VAR,            "var")         /* var */ \
 	TOKEN(WHILE,          "while")       /* while */ \
+	TOKEN(BREAK,          "break")       /* break */ \
 	TOKEN(END_OF_FILE,    "EOF")         /* end of file */ \
 	TOKEN(ERROR,          "ERROR")       /* error */
 

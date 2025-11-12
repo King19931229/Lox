@@ -8,6 +8,8 @@ struct Print;
 struct Var;
 struct Block;
 struct If;
+struct While;
+struct Break;
 struct Function;
 struct Return;
 struct Stat;
@@ -20,6 +22,8 @@ struct IStatVisitor
 	virtual void VisitVarStat(const Var* Stat) = 0;
 	virtual void VisitBlockStat(const Block* Stat) = 0;
 	virtual void VisitIfStat(const If* Stat) = 0;
+	virtual void VisitWhileStat(const While* Stat) = 0;
+	virtual void VisitBreakStat(const Break* Stat) = 0;
 	virtual void VisitFunctionStat(const Function* Stat) = 0;
 	virtual void VisitReturnStat(const Return* Stat) = 0;
 };
@@ -36,6 +40,8 @@ struct StatVisitor : public IStatVisitor
 	void VisitVarStat(const Var* Stat) override { result = DoVisitVarStat(Stat); }
 	void VisitBlockStat(const Block* Stat) override { result = DoVisitBlockStat(Stat); }
 	void VisitIfStat(const If* Stat) override { result = DoVisitIfStat(Stat); }
+	void VisitWhileStat(const While* Stat) override { result = DoVisitWhileStat(Stat); }
+	void VisitBreakStat(const Break* Stat) override { result = DoVisitBreakStat(Stat); }
 	void VisitFunctionStat(const Function* Stat) override { result = DoVisitFunctionStat(Stat); }
 	void VisitReturnStat(const Return* Stat) override { result = DoVisitReturnStat(Stat); }
 	
@@ -45,6 +51,8 @@ struct StatVisitor : public IStatVisitor
 	virtual R DoVisitVarStat(const Var* Stat) = 0;
 	virtual R DoVisitBlockStat(const Block* Stat) = 0;
 	virtual R DoVisitIfStat(const If* Stat) = 0;
+	virtual R DoVisitWhileStat(const While* Stat) = 0;
+	virtual R DoVisitBreakStat(const Break* Stat) = 0;
 	virtual R DoVisitFunctionStat(const Function* Stat) = 0;
 	virtual R DoVisitReturnStat(const Return* Stat) = 0;
 };
@@ -54,7 +62,7 @@ struct Stat
 {
 	virtual ~Stat() = default;
 
-	// Accept 方法现在是非模板的，并且接受基接口的引用
+	// Accept 鏂规硶鐜板湪鏄潪妯℃澘鐨勶紝骞朵笖鎺ュ彈鍩烘帴鍙ｇ殑寮曠敤
 	virtual void Accept(IStatVisitor& visitor) const = 0;
 };
 
@@ -179,6 +187,52 @@ struct If : public Stat
 	void Accept(IStatVisitor& visitor) const override
 	{
 		visitor.VisitIfStat(this);
+	}
+};
+struct While;
+typedef std::shared_ptr<While> WhilePtr;
+
+struct While : public Stat
+{
+	ExprPtr condition;
+	StatPtr body;
+	
+	While(const ExprPtr& inCondition, const StatPtr& inBody)
+	{
+		this->condition = inCondition;
+		this->body = inBody;
+	}
+	
+	static WhilePtr Create(const ExprPtr& inCondition, const StatPtr& inBody)
+	{
+		return std::make_shared<While>(inCondition, inBody);
+	}
+	
+	void Accept(IStatVisitor& visitor) const override
+	{
+		visitor.VisitWhileStat(this);
+	}
+};
+struct Break;
+typedef std::shared_ptr<Break> BreakPtr;
+
+struct Break : public Stat
+{
+	Token keyword;
+	
+	Break(const Token& inKeyword)
+	{
+		this->keyword = inKeyword;
+	}
+	
+	static BreakPtr Create(const Token& inKeyword)
+	{
+		return std::make_shared<Break>(inKeyword);
+	}
+	
+	void Accept(IStatVisitor& visitor) const override
+	{
+		visitor.VisitBreakStat(this);
 	}
 };
 struct Function;

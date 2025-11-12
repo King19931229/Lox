@@ -53,6 +53,7 @@ void Parser::Synchronize()
 			case TokenType::WHILE:
 			case TokenType::PRINT:
 			case TokenType::RETURN:
+			case TokenType::BREAK:
 				return;
 			default:
 				break;
@@ -367,6 +368,18 @@ StatPtr Parser::Statment()
 	{
 		return ReturnStatement();
 	}
+	else if (Match(TokenType::WHILE))
+	{
+		return WhileStatement();
+	}
+	else if (Match(TokenType::FOR))
+	{
+		return ForStatment();
+	}
+	else if (Match(TokenType::BREAK))
+	{
+		return BreakStatement();
+	}
 	return ExpressionStatment();
 }
 
@@ -454,6 +467,13 @@ StatPtr Parser::IfStatement()
 	return If::Create(condition, thenBranch, elseBranch);
 }
 
+StatPtr Parser::WhileStatement()
+{
+	ExprPtr condition = Expression();
+	StatPtr body = Statment();
+	return While::Create(condition, body);
+}
+
 StatPtr Parser::ReturnStatement()
 {
 	Token keyword = Previous();
@@ -471,4 +491,75 @@ StatPtr Parser::ExpressionStatment()
 	ExprPtr expr = Assignment();
 	Consume(TokenType::SEMICOLON, "Expect ';' after value.");
 	return Expression::Create(expr);
+}
+
+StatPtr Parser::ForStatment()
+{
+	Consume(TokenType::LEFT_PAREN, "Expect '(' after 'for'.");
+
+	StatPtr initializer;
+	if (Match(TokenType::SEMICOLON))
+	{
+		initializer = nullptr;
+	}
+	else if (Match(TokenType::VAR))
+	{
+		initializer = VarDeclaration();
+	}
+	else
+	{
+		initializer = ExpressionStatment();
+	}
+
+	ExprPtr condition = nullptr;
+	if (!Check(TokenType::SEMICOLON))
+	{
+		condition = Expression();
+	}
+	Consume(TokenType::SEMICOLON, "Expect ';' after loop condition.");
+
+	ExprPtr increment = nullptr;
+	if (!Check(TokenType::RIGHT_PAREN))
+	{
+		increment = Expression();
+	}
+	Consume(TokenType::RIGHT_PAREN, "Expect ')' after for clauses.");
+
+	StatPtr body = Statment();
+
+	if (increment)
+	{
+		std::vector<StatPtr> statements;
+		statements.push_back(body);
+		statements.push_back(Expression::Create(increment));
+		body = Block::Create(statements);
+	}
+
+	if (!condition)
+	{
+		condition = Literal::Create(Token(TokenType::TRUE, "true", 0, 0));
+	}
+
+	body = While::Create(condition, body);
+
+	if (initializer)
+	{
+		std::vector<StatPtr> statements;
+		statements.push_back(initializer);
+		statements.push_back(body);
+		body = Block::Create(statements);
+	}
+
+	return body;
+}
+
+StatPtr Parser::BreakStatement()
+{
+	Token keyword = Previous();
+	if (Match(TokenType::SEMICOLON))
+	{
+		return Break::Create(keyword);
+	}
+	Lox::GetInstance().Error(keyword.line, keyword.column, "Expect ';' after 'break'.");
+	return Expression::Create(nullptr);
 }

@@ -7,6 +7,7 @@ class Environment
 protected:
 	std::unordered_map<std::string, ValuePtr> values;
 	Environment* enclosing = nullptr;
+	const struct While* currentWhile = nullptr;
 	ValuePtr returnValue = nullptr;
 	bool isFunctionEnv = false;
 public:
@@ -32,6 +33,33 @@ public:
 			env = env->enclosing;
 		}
 		return nullptr;
+	}
+	Environment* GetTopEnv()
+	{
+		Environment* env = this;
+		while (env->enclosing)
+		{
+			env = env->enclosing;
+		}
+		return env;
+	}
+	void SetCurrentWhile(const While* whileStat)
+	{
+		Environment* env = GetFunctionEnv();
+		if (!env)
+		{
+			env = GetTopEnv();
+		}
+		env->currentWhile = whileStat;
+	}
+	const While* GetCurrentWhile()
+	{
+		Environment* env = GetFunctionEnv();
+		if (!env)
+		{
+			env = GetTopEnv();
+		}
+		return env->currentWhile;
 	}
 	void SetReturnValue(ValuePtr value)
 	{

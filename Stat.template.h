@@ -9,7 +9,7 @@ struct Stat
 {
 	virtual ~Stat() = default;
 
-	// Accept 方法现在是非模板的，并且接受基接口的引用
+	// Accept 鏂规硶鐜板湪鏄潪妯℃澘鐨勶紝骞朵笖鎺ュ彈鍩烘帴鍙ｇ殑寮曠敤
 	virtual void Accept(IStatVisitor& visitor) const = 0;
 };
 
