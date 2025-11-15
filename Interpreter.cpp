@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #define LOOP_CONTRAL_FAST_RETURN if (loopControl != LOOP_NONE) { return true; }
+#define ERROR_CONTRAL_FAST_RETURN if (Lox::GetInstance().HasRuntimeError()) { return true; }
 
 Interpreter::Interpreter()
 	: globalEnvironment(new Environment())
@@ -174,15 +175,52 @@ ValuePtr Interpreter::DoVisitUnaryExpr(const Unary* expr)
 	return ErrorValue::Create("Unknown unary operator.");
 }
 
+ValuePtr Interpreter::LookUpVariable(const Token& name, const Expr* expr)
+{
+	auto it = locals.find(expr);
+	if (it != locals.end())
+	{
+		int distance = it->second;
+		return environment->GetAt(distance, name.lexeme, name.line, name.column);
+	}
+	else
+	{
+		return globalEnvironment->Get(name.lexeme, name.line, name.column);
+	}
+}
+
 ValuePtr Interpreter::DoVisitVariableExpr(const Variable* expr)
 {
-	return environment->Get(expr->name.lexeme);
+	if (resolver)
+	{
+		return LookUpVariable(expr->name, expr);
+	}
+	else
+	{
+		return environment->Get(expr->name.lexeme);
+	}
 }
 
 ValuePtr Interpreter::DoVisitAssignExpr(const Assign* expr)
 {
 	ValuePtr value = Evaluate(expr->value);
-	environment->Assign(expr->name.lexeme, value, expr->name.line, expr->name.column);
+	if (resolver)
+	{
+		auto it = locals.find(expr);
+		if (it != locals.end())
+		{
+			int distance = it->second;
+			environment->AssignAt(distance, expr->name, value);
+		}
+		else
+		{
+			globalEnvironment->Assign(expr->name.lexeme, value, expr->name.line, expr->name.column);
+		}
+	}
+	else
+	{
+		environment->Assign(expr->name.lexeme, value, expr->name.line, expr->name.column);
+	}
 	return value;
 }
 
@@ -235,6 +273,7 @@ ValuePtr Interpreter::DoVisitLambdaExpr(const Lambda* expr)
 
 bool Interpreter::DoVisitExpressionStat(const Expression* stat)
 {
+	ERROR_CONTRAL_FAST_RETURN;
 	LOOP_CONTRAL_FAST_RETURN;
 
 	Evaluate(stat->expression);
@@ -243,6 +282,7 @@ bool Interpreter::DoVisitExpressionStat(const Expression* stat)
 
 bool Interpreter::DoVisitPrintStat(const Print* stat)
 {
+	ERROR_CONTRAL_FAST_RETURN;
 	LOOP_CONTRAL_FAST_RETURN;
 
 	Evaluate(stat->expression);
@@ -252,6 +292,7 @@ bool Interpreter::DoVisitPrintStat(const Print* stat)
 
 bool Interpreter::DoVisitVarStat(const Var* stat)
 {
+	ERROR_CONTRAL_FAST_RETURN;
 	LOOP_CONTRAL_FAST_RETURN;
 
 	if (stat->initializer)
@@ -336,6 +377,7 @@ ValuePtr Interpreter::CallLambda(const LoxLambda* lambda, const std::vector<Valu
 
 bool Interpreter::DoVisitBlockStat(const Block* stat)
 {
+	ERROR_CONTRAL_FAST_RETURN;
 	LOOP_CONTRAL_FAST_RETURN;
 
 	Environment* newEnv = new Environment(environment);
@@ -354,6 +396,8 @@ bool Interpreter::DoVisitFunctionStat(const Function* stat)
 
 bool Interpreter::DoVisitReturnStat(const Return* stat)
 {
+	ERROR_CONTRAL_FAST_RETURN;
+
 	ValuePtr value = NilValue::Create();
 	if (stat->value)
 	{
@@ -369,6 +413,7 @@ bool Interpreter::DoVisitReturnStat(const Return* stat)
 
 bool Interpreter::DoVisitIfStat(const If* stat)
 {
+	ERROR_CONTRAL_FAST_RETURN;
 	LOOP_CONTRAL_FAST_RETURN;
 
 	ValuePtr value = Evaluate(stat->condition);
@@ -409,3 +454,13 @@ bool Interpreter::DoVisitBreakStat(const Break* stat)
 	loopControl = LOOP_BREAK;
 	return true;
  }
+
+void Interpreter::Resolve(const Expr* expr, int depth)
+{
+	locals[expr] = depth;
+}
+
+void Interpreter::SetResolver(const class Resolver* resolver)
+{
+	this->resolver = resolver;
+}

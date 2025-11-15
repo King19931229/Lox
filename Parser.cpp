@@ -25,7 +25,7 @@ Token Parser::Error(const Token& token, const std::string& errorMessage)
 {
 	if (token.type == TokenType::END_OF_FILE)
 	{
-		Lox::GetInstance().Error(token.line, token.column, "at end: %s", errorMessage.c_str());
+		Lox::GetInstance().Error(token.line, token.column, "%s", errorMessage.c_str());
 	}
 	else
 	{
@@ -409,7 +409,7 @@ StatPtr Parser::VarDeclaration()
 	{
 		initializer = Assignment();
 	}
-	Consume(TokenType::SEMICOLON, "Expect ';' after variable declaration.");
+	Consume(TokenType::SEMICOLON, "Expect ';' after '" + Previous().lexeme + "'.");
 	return Var::Create(name, initializer);
 }
 
@@ -440,7 +440,7 @@ StatPtr Parser::FunDeclaration(const std::string& kind)
 StatPtr Parser::PrintStatement()
 {
 	ExprPtr expr = Assignment();
-	Consume(TokenType::SEMICOLON, "Expect ';' after value.");
+	Consume(TokenType::SEMICOLON, "Expect ';' after '" + Previous().lexeme + "'.");
 	return Print::Create(expr);
 }
 
@@ -482,14 +482,14 @@ StatPtr Parser::ReturnStatement()
 	{
 		value = Expression();
 	}
-	Consume(TokenType::SEMICOLON, "Expect ';' after return value.");
+	Consume(TokenType::SEMICOLON, "Expect ';' after '" + Previous().lexeme + "'.");
 	return Return::Create(keyword, value);
 }
 
 StatPtr Parser::ExpressionStatment()
 {
 	ExprPtr expr = Assignment();
-	Consume(TokenType::SEMICOLON, "Expect ';' after value.");
+	Consume(TokenType::SEMICOLON, "Expect ';' after '" + Previous().lexeme + "'.");
 	return Expression::Create(expr);
 }
 
@@ -516,7 +516,7 @@ StatPtr Parser::ForStatment()
 	{
 		condition = Expression();
 	}
-	Consume(TokenType::SEMICOLON, "Expect ';' after loop condition.");
+	Consume(TokenType::SEMICOLON, "Expect ';' after '" + Previous().lexeme + "'.");
 
 	ExprPtr increment = nullptr;
 	if (!Check(TokenType::RIGHT_PAREN))
@@ -556,10 +556,6 @@ StatPtr Parser::ForStatment()
 StatPtr Parser::BreakStatement()
 {
 	Token keyword = Previous();
-	if (Match(TokenType::SEMICOLON))
-	{
-		return Break::Create(keyword);
-	}
-	Lox::GetInstance().Error(keyword.line, keyword.column, "Expect ';' after 'break'.");
-	return Expression::Create(nullptr);
+	Consume(TokenType::SEMICOLON, "Expect ';' after '" + keyword.lexeme + "'.");
+	return Break::Create(keyword);
 }

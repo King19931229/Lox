@@ -37,10 +37,11 @@ std::vector<Token> Scanner::ScanTokens()
 	while (!IsAtEnd())
 	{
 		start = current;
+		startColumn = column;
 		ScanToken();
 	}
 
-	tokens.push_back(Token(TokenType::END_OF_FILE, "", line, column));
+	tokens.push_back(Token(TokenType::END_OF_FILE, "", line, startColumn));
 	return tokens;
 }
 
@@ -96,12 +97,12 @@ bool Scanner::Match(char expected)
 
 void Scanner::AddToken(TokenType tokenType)
 {
-	tokens.push_back(Token(tokenType, source.substr(start, current - start), line, column));
+	tokens.push_back(Token(tokenType, source.substr(start, current - start), line, startColumn));
 }
 
 void Scanner::AddToken(TokenType tokenType, const std::string& lexeme)
 {
-	tokens.push_back(Token(tokenType, lexeme, line, column));
+	tokens.push_back(Token(tokenType, lexeme, line, startColumn));
 }
 
 void Scanner::String()

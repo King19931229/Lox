@@ -43,6 +43,15 @@ public:
 		}
 		return env;
 	}
+	Environment* Ancestor(int distance)
+	{
+		Environment* env = this;
+		for (int i = 0; i < distance; ++i)
+		{
+			env = env->enclosing;
+		}
+		return env;
+	}
 	void SetCurrentWhile(const While* whileStat)
 	{
 		Environment* env = GetFunctionEnv();
@@ -107,6 +116,17 @@ public:
 		Lox::GetInstance().RuntimeError(line, column, "Undefined variable '%s'.", name.c_str());
 		return NilValue::Create();
 	}
+	ValuePtr GetAt(int distance, const std::string& name, size_t line = 0, size_t column = 0)
+	{
+		Environment* env = Ancestor(distance);
+		auto it = env->values.find(name);
+		if (it != env->values.end())
+		{
+			return it->second;
+		}
+		Lox::GetInstance().RuntimeError(line, column, "Undefined variable '%s'.", name.c_str());
+		return NilValue::Create();
+	}
 	void Assign(const std::string& name, ValuePtr value, size_t line = 0, size_t column = 0)
 	{
 		if (values.find(name) != values.end())
@@ -120,5 +140,16 @@ public:
 			return;
 		}
 		Lox::GetInstance().RuntimeError(line, column, "Undefined variable '%s'.", name.c_str());
+	}
+	void AssignAt(int distance, Token name, ValuePtr value)
+	{
+		Environment* env = Ancestor(distance);
+		auto it = env->values.find(name.lexeme);
+		if (it != env->values.end())
+		{
+			it->second = value;
+			return;
+		}
+		Lox::GetInstance().RuntimeError(name.line, name.column, "Undefined variable '%s'.", name.lexeme.c_str());
 	}
 };

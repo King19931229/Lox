@@ -2,6 +2,8 @@
 #include "Scanner.h"
 #include "Parser.h"
 #include "Interpreter.h"
+#include "Resolver.h"
+#include "Lox.h"
 #include <cstdio>
 #include <vector>
 #include <string>
@@ -100,7 +102,7 @@ void TestUnit::RunExpressionParserTest()
 		// (可选) 打印 tokens 以便调试
 		for (const Token& token : tokens)
 		{
-		 	printf("  Token: %-15s | type: %s\n", token.lexeme.c_str(), TokenTypeName[token.type]);
+			printf("  Token: %-15s | type: %s\n", token.lexeme.c_str(), TokenTypeName[token.type]);
 		}
 
 		Parser parser(tokens);
@@ -180,10 +182,10 @@ void TestUnit::RunExpressionInterpreterTest()
 	};
 
 	Interpreter interpreter;
-
+	Resolver resolver(&interpreter);
 #ifdef _WIN32
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes;
+	WORD saved_attributes = 0;
 	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
 	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
 	{
@@ -204,6 +206,7 @@ void TestUnit::RunExpressionInterpreterTest()
 		// 只有在解析成功时才进行解释
 		if (expression && !parser.HasError())
 		{
+			resolver.Resolve(expression);
 			ValuePtr result = interpreter.InterpretExpr(expression);
 			resultString = static_cast<std::string>(*result);
 		}
@@ -224,7 +227,7 @@ void TestUnit::RunExpressionInterpreterTest()
 #endif
 			printf("  [FAIL] Expected: %s, Got: %s\n", test.second.c_str(), resultString.c_str());
 #ifdef _WIN32
-			SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");
@@ -239,6 +242,8 @@ std::string RunWithCapture(const std::string& source)
 	std::ostringstream strCout;
 	std::cout.rdbuf(strCout.rdbuf());
 
+	Lox::GetInstance().ResetError();
+
 	// 2. 运行扫描、解析和解释流程
 	Scanner scanner(source);
 	auto tokens = scanner.ScanTokens();
@@ -249,6 +254,8 @@ std::string RunWithCapture(const std::string& source)
 	if (!parser.HasError())
 	{
 		Interpreter interpreter;
+		Resolver resolver(&interpreter);
+		resolver.Resolve(statements);
 		interpreter.Interpret(statements); // 假设 Interpret 会执行语句
 	}
 	else
@@ -272,14 +279,14 @@ std::string EscapeForPrinting(const std::string& str)
 	{
 		switch (c)
 		{
-		case '\n': result += "\\n"; break;
-		case '\r': result += "\\r"; break;
-		case '\t': result += "\\t"; break;
-		case '\"': result += "\\\""; break;
-		case '\\': result += "\\\\"; break;
-		default:
-			result += c;
-			break;
+			case '\n': result += "\\n"; break;
+			case '\r': result += "\\r"; break;
+			case '\t': result += "\\t"; break;
+			case '\"': result += "\\\""; break;
+			case '\\': result += "\\\\"; break;
+			default:
+				result += c;
+				break;
 		}
 	}
 	return result;
@@ -309,7 +316,7 @@ void TestUnit::RunStatementInterpreterTest()
 		{ "1 + 1; print \"result\"; 3*3;", "result\n" },
 
 		// 5. 解析错误
-		{ "print 123", "Parse Error" }, // 缺少分号
+		{ "print 123", "[1:7] : Expect ';' after '123'.\nParse Error" }, // 缺少分号
 
 		// 6. 块作用域
 		{ "{ print 1; print 2; }", "1\n2\n" },
@@ -340,7 +347,7 @@ void TestUnit::RunStatementInterpreterTest()
 
 #ifdef _WIN32
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes;
+	WORD saved_attributes = 0;
 	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
 	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
 	{
@@ -369,7 +376,7 @@ void TestUnit::RunStatementInterpreterTest()
 #endif
 			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
 #ifdef _WIN32
-			SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");
@@ -412,7 +419,7 @@ void TestUnit::RunFunctionInterpreterTest()
 
 #ifdef _WIN32
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes;
+	WORD saved_attributes = 0;
 	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
 	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
 	{
@@ -441,7 +448,108 @@ void TestUnit::RunFunctionInterpreterTest()
 #endif
 			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
 #ifdef _WIN32
-			SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
+#endif
+		}
+		printf("----------------------------------------\n\n");
+	}
+}
+
+// 辅助函数：运行解析器并捕获语义错误
+std::string RunResolverWithCapture(const std::string& source)
+{
+	// 1. 备份原始的 cout 缓冲并重定向
+	std::streambuf* oldCoutStreamBuf = std::cout.rdbuf();
+	std::ostringstream strCout;
+	std::cout.rdbuf(strCout.rdbuf());
+
+	// 2. 重置 Lox 的错误状态
+	Lox::GetInstance().ResetError();
+
+	// 3. 运行扫描、解析和语义分析
+	Scanner scanner(source);
+	auto tokens = scanner.ScanTokens();
+	Parser parser(tokens);
+	auto statements = parser.Parse();
+
+	// 只有在解析成功时才进行语义分析
+	if (!parser.HasError())
+	{
+		Interpreter interpreter; // 解析器需要一个解释器实例
+		Resolver resolver(&interpreter);
+		resolver.Resolve(statements);
+	}
+	else
+	{
+		strCout << "[解析错误]";
+	}
+
+	// 4. 恢复原始的 cout 缓冲
+	std::cout.rdbuf(oldCoutStreamBuf);
+
+	// 5. 返回捕获到的错误字符串
+	return strCout.str();
+}
+
+void TestUnit::RunResolverTest()
+{
+	const std::vector<std::pair<std::string, std::string>> testCases = {
+		// --- Valid Cases (should produce no output) ---
+		{ "var a = 1; print a;", "" },
+		{ "{ var a = 1; print a; }", "" },
+		{ "var a = 1; { var a = 2; print a; } print a;", "" },
+		{ "fun f() { return 1; } f();", "" },
+		{ "while(true) { break; }", "" },
+		{ "fun f() { while(true) { break; } return; }", "" },
+		{ "var a = 1; a = 2;", "" },
+
+		// --- Invalid Cases (should produce semantic errors) ---
+		// Variable Errors
+		{ "{ var a = 1; var a = 2; }", "[1:18] SemanticError: Variable 'a' already defined in this scope.\n" },
+		// { "var a = a;", "[1:8] SemanticError: Cannot read local variable 'a' in its own initializer.\n" },
+		{ "fun f() { var a = a; }", "[1:19] SemanticError: Cannot read local variable 'a' in its own initializer.\n" },
+
+		// Return Statement Errors
+		{ "return;", "[1:1] SemanticError: 'return' statement not within a function.\n" },
+		{ "fun f() {} return;", "[1:12] SemanticError: 'return' statement not within a function.\n" },
+
+		// Break Statement Errors
+		{ "break;", "[1:1] SemanticError: 'break' statement not within a loop.\n" },
+		{ "fun f() { break; }", "[1:11] SemanticError: 'break' statement not within a loop.\n" },
+		{ "if (true) { break; }", "[1:13] SemanticError: 'break' statement not within a loop.\n" },
+	};
+
+#ifdef _WIN32
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	WORD saved_attributes = 0;
+	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
+	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
+	{
+		saved_attributes = consoleInfo.wAttributes;
+	}
+#endif
+
+	for (const auto& test : testCases)
+	{
+		printf("--- Testing Resolver: \"%s\" ---\n", test.first.c_str());
+
+		std::string capturedOutput = RunResolverWithCapture(test.first);
+
+		std::string expectedEscaped = EscapeForPrinting(test.second);
+		std::string gotEscaped = EscapeForPrinting(capturedOutput);
+
+		if (capturedOutput == test.second)
+		{
+			printf("  [PASS] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
+		}
+		else
+		{
+#ifdef _WIN32
+			SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+#endif
+			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
+#ifdef _WIN32
+			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");

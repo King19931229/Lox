@@ -14,16 +14,17 @@ public:
 	~Interpreter();
 	ValuePtr InterpretExpr(const ExprPtr& expr);
 	void Interpret(const std::vector<StatPtr>& statements);
+	void Resolve(const Expr* expr, int depth);
 	std::string Stringify(ValuePtr value);
 	bool Trueify(ValuePtr value);
+	void SetResolver(const class Resolver* resolver);
 protected:
 	friend struct LoxLambda;
 	friend struct LoxFunction;
 	Environment* globalEnvironment = nullptr;
 	Environment* environment = nullptr;
+	const class Resolver* resolver = nullptr;
 
-	ValuePtr CallFunction(const LoxFunction* function, const std::vector<ValuePtr>& arguments);
-	ValuePtr CallLambda(const LoxLambda* lambda, const std::vector<ValuePtr>& arguments);
 	enum LoopControl
 	{
 		LOOP_CONTINUE,
@@ -32,9 +33,16 @@ protected:
 	};
 	LoopControl loopControl = LOOP_NONE;
 
+	std::unordered_map<const Expr*, int> locals;
+
+	ValuePtr CallFunction(const LoxFunction* function, const std::vector<ValuePtr>& arguments);
+	ValuePtr CallLambda(const LoxLambda* lambda, const std::vector<ValuePtr>& arguments);
+
 	ValuePtr Evaluate(const ExprPtr& expr);
 	void Execute(const StatPtr& stat);
 	void ExecuteBlock(const std::vector<StatPtr>& statements, Environment* newEnv);
+
+	ValuePtr LookUpVariable(const Token& name, const Expr* expr);
 
 	virtual ValuePtr DoVisitTernaryExpr(const Ternary* expr) override;
 

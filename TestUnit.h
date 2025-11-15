@@ -7,4 +7,5 @@ struct TestUnit
 	static void RunExpressionInterpreterTest();
 	static void RunStatementInterpreterTest();
 	static void RunFunctionInterpreterTest();
+	static void RunResolverTest();
 };

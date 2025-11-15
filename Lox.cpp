@@ -1,6 +1,7 @@
 #include "Lox.h"
 #include "Scanner.h"
 #include "Parser.h"
+#include "Resolver.h"
 #include "Interpreter.h"
 #include <cstdarg>
 #include <cstdio>
@@ -8,34 +9,68 @@
 #include <vector>
 #include <fstream>
 #include <string>
+#include <iostream>
+#include <memory>
 
 Lox* Lox::instance = nullptr;
+
+// 辅助函数：使用可变参数格式化字符串，返回 std::string
+// 这个函数会安全地处理缓冲区大小，避免溢出
+std::string FormatString(const char* fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	// 创建一个 va_list 的副本，因为 vsnprintf 可能会修改它
+	va_list args_copy;
+	va_copy(args_copy, args);
+	// 第一次调用 vsnprintf 获取格式化后所需的字符串长度 (不包括末尾的 '\0')
+	int len = vsnprintf(nullptr, 0, fmt, args_copy);
+	va_end(args_copy);
+
+	if (len < 0)
+	{
+		va_end(args);
+		// 如果发生编码错误，返回一个错误信息
+		return "Format error";
+	}
+
+	// 创建一个足够大的缓冲区来存储格式化后的字符串
+	// 使用 std::unique_ptr 来自动管理内存
+	auto buffer = std::make_unique<char[]>(len + 1);
+	// 第二次调用 vsnprintf，将结果写入缓冲区
+	vsnprintf(buffer.get(), len + 1, fmt, args);
+	va_end(args);
+
+	return std::string(buffer.get());
+}
 
 Lox::Lox()
 {
 	if (instance)
 	{
-		printf("Lox have more than 1 instance.");
+		std::cout << "Lox have more than 1 instance.";
 		exit(0);
 	}
 	interpreter = new Interpreter();
+	resolver = new Resolver(interpreter);
 }
 
 Lox::~Lox()
 {
+	delete resolver;
 	delete interpreter;
 }
 
 void Lox::Run(int argc, char* argv[])
 {
-    if (argc > 1)
+    if (argc > 2) // 修正：argc 包含程序名，所以 > 2 表示多于一个参数
     {
-        printf("Argument count error: %d, expected at most 1\n", argc);
+        std::cout << FormatString("Argument count error: %d, expected at most 1\n", argc - 1);
         exit(64);
     }
-    else if (argc == 1)
+    else if (argc == 2) // 修正：argc == 2 表示有一个文件路径参数
     {
-        RunFile(argv[0]);
+        RunFile(argv[1]);
     }
     else
     {
@@ -49,7 +84,7 @@ void Lox::RunFile(const char* path)
 	std::ifstream file(path, std::ios::binary);
 	if (!file)
 	{
-		printf("Could not open file: %s\n", path);
+		std::cout << FormatString("Could not open file: %s\n", path);
 		return;
 	}
 	file.seekg(0, std::ios::end);
@@ -59,10 +94,10 @@ void Lox::RunFile(const char* path)
 	std::vector<char> buffer(size);
 	if (!file.read(buffer.data(), size))
 	{
-		printf("Failed to read file: %s\n", path);
+		std::cout << FormatString("Failed to read file: %s\n", path);
 		return;
 	}
-	printf("File loaded (%zd bytes)\n", buffer.size());
+	std::cout << FormatString("File loaded (%zd bytes)\n", buffer.size());
 	Run(buffer.data());
 
 	// Indicate an error in the exit code.
@@ -82,7 +117,7 @@ void Lox::RunPrompt()
 	char line[1024];
 	while (true)
 	{
-		printf("> ");
+		std::cout << "> ";
 		if (!fgets(line, sizeof(line), stdin)) break;
 		Run(line);
 		hadError = false;
@@ -104,6 +139,9 @@ void Lox::Run(const char* source)
 		if (hadError) return;
 		if (expr)
 		{
+			resolver->Resolve(expr);
+			if (hadSemanticError) return;
+
 			ValuePtr result = interpreter->InterpretExpr(expr);
 			if (hadRuntimeError) return;
 			if (result)
@@ -117,7 +155,18 @@ void Lox::Run(const char* source)
 	parser.Reset();
 	std::vector<StatPtr> stats = parser.Parse();
 	if (hadError) return;
+
+	resolver->Resolve(stats);
+	if (hadSemanticError) return;
+
 	interpreter->Interpret(stats);
+}
+
+void Lox::ResetError()
+{
+	hadError = false;
+	hadSemanticError = false;
+	hadRuntimeError = false;
 }
 
 void Lox::Error(size_t line, size_t column, const char* fmt, ...)
@@ -165,14 +214,44 @@ void Lox::RuntimeError(const char* fmt, ...)
 	hadRuntimeError = true;
 }
 
+void Lox::SemanticError(size_t line, size_t column, const char* fmt, ...)
+{
+	if (ignoreError)
+	{
+		return;
+	}
+	char buffer[1024];
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(buffer, sizeof(buffer), fmt, args);
+	va_end(args);
+	Report(line, column, "SemanticError", buffer);
+	hadSemanticError = true;
+}
+
+void Lox::SemanticError(const char* fmt, ...)
+{
+	if (ignoreError)
+	{
+		return;
+	}
+	char buffer[1024];
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(buffer, sizeof(buffer), fmt, args);
+	va_end(args);
+	Report(0, 0, "SemanticError", buffer);
+	hadSemanticError = true;
+}
+
 void Lox::Report(size_t line, size_t column, const char* where, const char* message)
 {
 	if (line != 0 && column != 0)
 	{
-		printf("[%zd:%zd] %s: %s\n", line, column, where, message);
+		std::cout << FormatString("[%zd:%zd] %s: %s\n", line, column, where, message);
 	}
 	else
 	{
-		printf("%s: %s\n", where, message);
+		std::cout << FormatString("%s: %s\n", where, message);
 	}
 }

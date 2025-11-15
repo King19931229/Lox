@@ -35,7 +35,6 @@ protected:
 
 	inline Token Peek() const
 	{
-		if (IsAtEnd()) return Token();
 		return tokens[current];
 	}
 

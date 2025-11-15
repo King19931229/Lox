@@ -18,6 +18,7 @@ protected:
 	size_t current = 0;
 	size_t line = 1;
 	size_t column = 1;
+	size_t startColumn = 1;
 	bool IsAtEnd();
 	bool IsDigit(char c);
 	bool IsAlpha(char c);

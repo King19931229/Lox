@@ -10,6 +10,7 @@ int main(int argc, char* argv[])
 	TestUnit::RunExpressionInterpreterTest();
 	TestUnit::RunStatementInterpreterTest();
 	TestUnit::RunFunctionInterpreterTest();
+	TestUnit::RunResolverTest();
 	//Lox& lox = Lox::GetInstance();
 	//lox.Run(0, nullptr);
 	//lox.Run(argc - 1, argc > 1 ? &argv[1] : nullptr);
