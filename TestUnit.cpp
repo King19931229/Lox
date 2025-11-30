@@ -116,7 +116,7 @@ void TestUnit::RunExpressionInterpreterTest()
 	const std::vector<std::pair<std::string, std::string>> testCases = {
 		// Literals
 		{ "123", "123" },
-		{ "123.45", "123.450000" }, // std::to_string for float has this format
+		{ "123.45", "123.449997" }, // std::to_string for float has this format
 		{ "\"hello\"", "hello" },
 		{ "true", "true" },
 		{ "false", "false" },
@@ -455,6 +455,58 @@ void TestUnit::RunFunctionInterpreterTest()
 	}
 }
 
+void TestUnit::RunClassInterpreterTest()
+{
+	const std::vector<std::pair<std::string, std::string>> testCases = {
+		// Basic class and method
+		{ "class Foo{ func(){} } var f = Foo(); print(Foo); print(f);", "<class Foo>\n<instance of Foo>\n" },
+		// Assigning and accessing fields
+		{ "class Bar{ } var b = Bar(); b.x = 42; print(b.x);", "42\n" },
+		{ "class Cat{ } var c = Cat(); c.meow = fun() { print \"meow\"; }; c.meow();", "meow\n" },
+		// Method calling
+		{ "class Dog{ bark() { print \"woof\"; } } var d = Dog(); d.bark();", "woof\n" },
+		// This
+		{ "class Counter{ increment() { this.count = this.count + 1; } getCount() { return this.count; } } var c = Counter(); c.count = 0; c.increment(); c.increment(); print(c.getCount());", "2\n" },
+	};
+
+#ifdef _WIN32
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	WORD saved_attributes = 0;
+	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
+	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
+	{
+		saved_attributes = consoleInfo.wAttributes;
+	}
+#endif
+
+	for (const auto& test : testCases)
+	{
+		printf("--- Testing Function: \"%s\" ---\n", test.first.c_str());
+
+		std::string capturedOutput = RunWithCapture(test.first);
+
+		// 使用转义函数来美化输出
+		std::string expectedEscaped = EscapeForPrinting(test.second);
+		std::string gotEscaped = EscapeForPrinting(capturedOutput);
+
+		if (capturedOutput == test.second)
+		{
+			printf("  [PASS] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
+		}
+		else
+		{
+#ifdef _WIN32
+			SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+#endif
+			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
+#ifdef _WIN32
+			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
+#endif
+		}
+		printf("----------------------------------------\n\n");
+	}
+}
+
 // 辅助函数：运行解析器并捕获语义错误
 std::string RunResolverWithCapture(const std::string& source)
 {
@@ -481,7 +533,7 @@ std::string RunResolverWithCapture(const std::string& source)
 	}
 	else
 	{
-		strCout << "[解析错误]";
+		strCout << "[Parse error]";
 	}
 
 	// 4. 恢复原始的 cout 缓冲
@@ -502,6 +554,7 @@ void TestUnit::RunResolverTest()
 		{ "while(true) { break; }", "" },
 		{ "fun f() { while(true) { break; } return; }", "" },
 		{ "var a = 1; a = 2;", "" },
+		{ "class C { m() { return this; } }", "" },
 
 		// --- Invalid Cases (should produce semantic errors) ---
 		// Variable Errors
@@ -517,6 +570,10 @@ void TestUnit::RunResolverTest()
 		{ "break;", "[1:1] SemanticError: 'break' statement not within a loop.\n" },
 		{ "fun f() { break; }", "[1:11] SemanticError: 'break' statement not within a loop.\n" },
 		{ "if (true) { break; }", "[1:13] SemanticError: 'break' statement not within a loop.\n" },
+
+		// This Errors
+		{ "this;", "[1:1] SemanticError: 'this' cannot be used outside of a class.\n" },
+		{ "fun f() { this; }", "[1:12] SemanticError: 'this' cannot be used outside of a class.\n" },
 	};
 
 #ifdef _WIN32

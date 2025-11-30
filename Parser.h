@@ -76,6 +76,7 @@ protected:
 	StatPtr Declaration();
 	StatPtr VarDeclaration();
 	StatPtr FunDeclaration(const std::string& kind);
+	StatPtr ClassDeclaration();
 	StatPtr Statment();
 	StatPtr PrintStatement();
 	StatPtr BlockStatement();

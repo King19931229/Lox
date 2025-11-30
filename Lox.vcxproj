@@ -142,6 +142,7 @@
     <ClCompile Include="GenerateAST.cpp" />
     <ClCompile Include="Interpreter.cpp" />
     <ClCompile Include="Lox.cpp" />
+    <ClCompile Include="LoxCallable.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Parser.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>

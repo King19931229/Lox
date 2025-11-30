@@ -13,6 +13,7 @@ enum ValueType
 	TYPE_BOOL,
 	TYPE_NIL,
 	TYPE_CALLABLE,
+	TYPE_INSTANCE,
 	TYPE_ERROR // 新增：错误类型
 };
 
@@ -20,7 +21,7 @@ struct Value;
 typedef std::shared_ptr<Value> ValuePtr;
 
 // 基础 Value 结构体
-struct Value
+struct Value : public std::enable_shared_from_this<Value>
 {
 	ValueType type;
 	virtual ~Value() = default;

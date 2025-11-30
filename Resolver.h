@@ -12,19 +12,27 @@ protected:
 	// Scope: variable name to whether it is defined
 	typedef std::unordered_map<std::string, bool> Scope;
 
-	enum WhileType
+	enum class WhileType
 	{
 		NOT_IN_WHILE,
 		IN_WHILE
 	};
-	WhileType currentWhileType = NOT_IN_WHILE;
+	WhileType currentWhileType = WhileType::NOT_IN_WHILE;
 
-	enum FunctionType
+	enum class FunctionType
 	{
-		NOT_IN_FUNCTION,
-		IN_FUNCTION
+		NONE,
+		FUNCTION,
+		METHOD
 	};
-	FunctionType currentFunctionType = NOT_IN_FUNCTION;
+	FunctionType currentFunctionType = FunctionType::NONE;
+
+	enum class ClassType
+	{
+		NONE,
+		CLASS
+	};
+	ClassType currentClassType = ClassType::NONE;
 
 	std::vector<Scope> scopes;
 
@@ -35,6 +43,7 @@ protected:
 	void Define(const Token& name);
 
 	void ResolveLocal(const Expr* expr, const Token& name);
+	void ResolveFunction(const Stat* function, FunctionType type);
 public:
 	Resolver(class Interpreter* inInterpreter);
 	~Resolver();
@@ -53,6 +62,9 @@ public:
 	virtual bool DoVisitLogicalExpr(const Logical* expr) override;
 	virtual bool DoVisitCallExpr(const Call* expr) override;
 	virtual bool DoVisitLambdaExpr(const Lambda* expr) override;
+	virtual bool DoVisitGetExpr(const Get* expr) override;
+	virtual bool DoVisitSetExpr(const Set* expr) override;
+	virtual bool DoVisitThisExpr(const This* expr) override;
 
 	virtual bool DoVisitExpressionStat(const Expression* stat) override;
 	virtual bool DoVisitPrintStat(const Print* stat) override;
@@ -63,4 +75,5 @@ public:
 	virtual bool DoVisitBreakStat(const Break* stat) override;
 	virtual bool DoVisitFunctionStat(const Function* stat) override;
 	virtual bool DoVisitReturnStat(const Return* stat) override;
+	virtual bool DoVisitClassStat(const Class* stat) override;
 };

@@ -3,8 +3,8 @@
 #include "LoxCallable.h"
 #include <assert.h>
 
-#define LOOP_CONTRAL_FAST_RETURN if (loopControl != LOOP_NONE) { return true; }
-#define ERROR_CONTRAL_FAST_RETURN if (Lox::GetInstance().HasRuntimeError()) { return true; }
+#define LOOP_CONTROL_FAST_RETURN if (loopControl != LOOP_NONE) { return true; }
+#define ERROR_CONTROL_FAST_RETURN if (Lox::GetInstance().HasRuntimeError()) { return true; }
 
 Interpreter::Interpreter()
 	: globalEnvironment(new Environment())
@@ -39,7 +39,6 @@ Interpreter::Interpreter()
 Interpreter::~Interpreter()
 {
 	assert(environment == globalEnvironment && "Environment stack not balanced on Interpreter destruction.");
-	delete globalEnvironment;
 }
 
 ValuePtr Interpreter::InterpretExpr(const ExprPtr& expr)
@@ -267,14 +266,45 @@ ValuePtr Interpreter::DoVisitCallExpr(const Call* expr)
 ValuePtr Interpreter::DoVisitLambdaExpr(const Lambda* expr)
 {
 	ValuePtr lambda = LoxLambda::Create(expr);
-	dynamic_cast<LoxLambda*>(lambda.get())->closure = environment->Clone();
+	dynamic_cast<LoxLambda*>(lambda.get())->closure = environment;
 	return lambda;
+}
+
+ValuePtr Interpreter::DoVisitGetExpr(const Get* expr)
+{
+	ValuePtr object = Evaluate(expr->object);
+	if (object->type != TYPE_INSTANCE)
+	{
+		Lox::GetInstance().RuntimeError(expr->name.line, expr->name.column, "Only instances have properties.");
+		return ErrorValue::Create("Only instances have properties.");
+	}
+	LoxInstance* instance = static_cast<LoxInstance*>(object.get());
+	return instance->Get(expr->name);
+}
+
+ValuePtr Interpreter::DoVisitSetExpr(const Set* expr)
+{
+	ValuePtr object = Evaluate(expr->object);
+	if (object->type != TYPE_INSTANCE)
+	{
+		Lox::GetInstance().RuntimeError(expr->name.line, expr->name.column, "Only instances have properties.");
+		return ErrorValue::Create("Only instances have properties.");
+	}
+	LoxInstance* instance = static_cast<LoxInstance*>(object.get());
+	ValuePtr value = Evaluate(expr->value);
+	instance->Set(expr->name, value);
+	return value;
+}
+
+ValuePtr Interpreter::DoVisitThisExpr(const This* expr)
+{
+	return LookUpVariable(expr->keyword, expr);
 }
 
 bool Interpreter::DoVisitExpressionStat(const Expression* stat)
 {
-	ERROR_CONTRAL_FAST_RETURN;
-	LOOP_CONTRAL_FAST_RETURN;
+	ERROR_CONTROL_FAST_RETURN;
+	LOOP_CONTROL_FAST_RETURN;
 
 	Evaluate(stat->expression);
 	return true;
@@ -282,8 +312,8 @@ bool Interpreter::DoVisitExpressionStat(const Expression* stat)
 
 bool Interpreter::DoVisitPrintStat(const Print* stat)
 {
-	ERROR_CONTRAL_FAST_RETURN;
-	LOOP_CONTRAL_FAST_RETURN;
+	ERROR_CONTROL_FAST_RETURN;
+	LOOP_CONTROL_FAST_RETURN;
 
 	Evaluate(stat->expression);
 	std::cout << Stringify(Evaluate(stat->expression)) << std::endl;
@@ -292,8 +322,8 @@ bool Interpreter::DoVisitPrintStat(const Print* stat)
 
 bool Interpreter::DoVisitVarStat(const Var* stat)
 {
-	ERROR_CONTRAL_FAST_RETURN;
-	LOOP_CONTRAL_FAST_RETURN;
+	ERROR_CONTROL_FAST_RETURN;
+	LOOP_CONTROL_FAST_RETURN;
 
 	if (stat->initializer)
 	{
@@ -306,9 +336,9 @@ bool Interpreter::DoVisitVarStat(const Var* stat)
 	return true;
 }
 
-void Interpreter::ExecuteBlock(const std::vector<StatPtr>& statements, Environment* newEnv)
+void Interpreter::ExecuteBlock(const std::vector<StatPtr>& statements, EnvironmentPtr newEnv)
 {
-	Environment* oldEnv = environment;
+	auto oldEnv = environment;
 	environment = newEnv;
 	for (StatPtr stat : statements)
 	{
@@ -328,7 +358,7 @@ ValuePtr LoxFunction::Call(class Interpreter* interpreter, const std::vector<Val
 
 ValuePtr Interpreter::CallFunction(const LoxFunction* function, const std::vector<ValuePtr>& arguments)
 {
-	Environment* functionEnv = new Environment(function->closure, true);
+	EnvironmentPtr functionEnv = std::make_shared<Environment>(function->closure, true);
 	for (size_t i = 0; i < function->declaration->params.size(); ++i)
 	{
 		functionEnv->Define(function->declaration->params[i].lexeme, arguments[i], function->declaration->params[i].line, function->declaration->params[i].column);
@@ -344,8 +374,6 @@ ValuePtr Interpreter::CallFunction(const LoxFunction* function, const std::vecto
 	{
 		returnValue = NilValue::Create();
 	}
-
-	delete functionEnv;
 	return returnValue;
 }
 
@@ -356,7 +384,7 @@ ValuePtr LoxLambda::Call(class Interpreter* interpreter, const std::vector<Value
 
 ValuePtr Interpreter::CallLambda(const LoxLambda* lambda, const std::vector<ValuePtr>& arguments)
 {
-	Environment* lambdaEnv = new Environment(lambda->closure, true);
+	EnvironmentPtr lambdaEnv = std::make_shared<Environment>(lambda->closure, true);
 	for (size_t i = 0; i < lambda->declaration->params.size(); ++i)
 	{
 		lambdaEnv->Define(lambda->declaration->params[i].lexeme, arguments[i], lambda->declaration->params[i].line, lambda->declaration->params[i].column);
@@ -371,32 +399,29 @@ ValuePtr Interpreter::CallLambda(const LoxLambda* lambda, const std::vector<Valu
 	{
 		returnValue = NilValue::Create();
 	}
-	delete lambdaEnv;
 	return returnValue;
 }
 
 bool Interpreter::DoVisitBlockStat(const Block* stat)
 {
-	ERROR_CONTRAL_FAST_RETURN;
-	LOOP_CONTRAL_FAST_RETURN;
+	ERROR_CONTROL_FAST_RETURN;
+	LOOP_CONTROL_FAST_RETURN;
 
-	Environment* newEnv = new Environment(environment);
+	EnvironmentPtr newEnv = std::make_shared<Environment>(environment);
 	ExecuteBlock(stat->statements, newEnv);
-	delete newEnv;
 	return true;
 }
 
 bool Interpreter::DoVisitFunctionStat(const Function* stat)
 {
-	ValuePtr function = LoxFunction::Create(stat);
+	ValuePtr function = LoxFunction::Create(stat, environment);
 	environment->Define(stat->name.lexeme, function, stat->name.line, stat->name.column);
-	dynamic_cast<LoxFunction*>(function.get())->closure = environment->Clone();
 	return true;
 }
 
 bool Interpreter::DoVisitReturnStat(const Return* stat)
 {
-	ERROR_CONTRAL_FAST_RETURN;
+	ERROR_CONTROL_FAST_RETURN;
 
 	ValuePtr value = NilValue::Create();
 	if (stat->value)
@@ -411,10 +436,34 @@ bool Interpreter::DoVisitReturnStat(const Return* stat)
 	return true;
 }
 
+ValuePtr LoxClass::Call(Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
+{
+	return LoxInstance::Create(shared_from_this());
+}
+
+bool Interpreter::DoVisitClassStat(const Class* stat)
+{
+	ERROR_CONTROL_FAST_RETURN;
+	environment->Define(stat->name.lexeme, nullptr, stat->name.line, stat->name.column);
+	ValuePtr klass = LoxClass::Create(stat->name.lexeme);
+	auto& methods = static_cast<LoxClass*>(klass.get())->methods;
+	for(StatPtr methodStat : stat->methods)
+	{
+		Function* methodFunction = dynamic_cast<Function*>(methodStat.get());
+		if (methodFunction)
+		{
+			ValuePtr function = LoxFunction::Create(methodFunction, environment);
+			methods[methodFunction->name.lexeme] = function;
+		}
+	}
+	environment->Assign(stat->name.lexeme, klass, stat->name.line, stat->name.column);
+	return true;
+}
+
 bool Interpreter::DoVisitIfStat(const If* stat)
 {
-	ERROR_CONTRAL_FAST_RETURN;
-	LOOP_CONTRAL_FAST_RETURN;
+	ERROR_CONTROL_FAST_RETURN;
+	LOOP_CONTROL_FAST_RETURN;
 
 	ValuePtr value = Evaluate(stat->condition);
 	if (Trueify(value))

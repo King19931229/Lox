@@ -1,5 +1,6 @@
 #pragma once
 #include "Value.h"
+#include "Expr.h"
 #include "Stat.h"
 #include "Environment.h"
 #include <vector>
@@ -14,69 +15,49 @@ struct LoxCallable : public Value
 struct LoxLambda : public LoxCallable
 {
 	const Lambda* declaration;
-	Environment* closure;
+	EnvironmentPtr closure;
 
-	LoxLambda(const Lambda* inDeclaration)
-		: declaration(inDeclaration)
-		, closure(nullptr)
-	{
-		this->type = TYPE_CALLABLE;
-	}
-
-	~LoxLambda()
-	{
-		delete closure;
-	}
-
-	static ValuePtr Create(const Lambda* declaration)
-	{
-		return std::make_shared<LoxLambda>(declaration);
-	}
-
-	int Arity() const override
-	{
-		return static_cast<int>(declaration->params.size());
-	}
-
-	operator std::string() const override
-	{
-		return "<lambda> location: " + std::to_string(declaration->keyword.line) + ":" + std::to_string(declaration->keyword.column);
-	}
-
+	LoxLambda(const Lambda* inDeclaration);
+	static ValuePtr Create(const Lambda* declaration);
+	int Arity() const override;
+	operator std::string() const override;
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
 };
 
 struct LoxFunction : public LoxCallable
 {
 	const Function* declaration;
-	Environment* closure;
+	EnvironmentPtr closure;
 
-	LoxFunction(const Function* inDeclaration)
-		: declaration(inDeclaration)
-		, closure(nullptr)
-	{
-		this->type = TYPE_CALLABLE;
-	}
-
-	~LoxFunction()
-	{
-		delete closure;
-	}
-
-	static ValuePtr Create(const Function* declaration)
-	{
-		return std::make_shared<LoxFunction>(declaration);
-	}
-
-	int Arity() const override
-	{
-		return static_cast<int>(declaration->params.size());
-	}
-
-	operator std::string() const override
-	{
-		return "<fn " + declaration->name.lexeme + ">";
-	}
-
+	LoxFunction(const Function* inDeclaration);
+	static ValuePtr Create(const Function* declaration, EnvironmentPtr closure);
+	ValuePtr Bound(ValuePtr instance);
+	int Arity() const override;
+	operator std::string() const override;
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
+};
+
+struct LoxClass : public LoxCallable
+{
+	std::string name;
+	std::unordered_map<std::string, ValuePtr> methods;
+
+	LoxClass(const std::string& inName);
+	static ValuePtr Create(const std::string& name);
+	int Arity() const override;
+	operator std::string() const override;
+	ValuePtr FindMethod(const std::string& methodName);
+	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
+};
+
+struct LoxInstance : public Value
+{
+	ValuePtr klass;
+	std::unordered_map<std::string, ValuePtr> fields;
+
+	LoxInstance(ValuePtr inClass);
+	static ValuePtr Create(ValuePtr klass);
+	operator std::string() const override;
+	ValuePtr Get(const Token& name, size_t line = 0, size_t column = 0);
+	void Set(const Token& name, ValuePtr value);
 };

@@ -14,6 +14,9 @@ struct Assign;
 struct Logical;
 struct Call;
 struct Lambda;
+struct Get;
+struct Set;
+struct This;
 struct Expr;
 
 struct IExprVisitor
@@ -29,6 +32,9 @@ struct IExprVisitor
 	virtual void VisitLogicalExpr(const Logical* Expr) = 0;
 	virtual void VisitCallExpr(const Call* Expr) = 0;
 	virtual void VisitLambdaExpr(const Lambda* Expr) = 0;
+	virtual void VisitGetExpr(const Get* Expr) = 0;
+	virtual void VisitSetExpr(const Set* Expr) = 0;
+	virtual void VisitThisExpr(const This* Expr) = 0;
 };
 
 template<typename R>
@@ -48,6 +54,9 @@ struct ExprVisitor : public IExprVisitor
 	void VisitLogicalExpr(const Logical* Expr) override { result = DoVisitLogicalExpr(Expr); }
 	void VisitCallExpr(const Call* Expr) override { result = DoVisitCallExpr(Expr); }
 	void VisitLambdaExpr(const Lambda* Expr) override { result = DoVisitLambdaExpr(Expr); }
+	void VisitGetExpr(const Get* Expr) override { result = DoVisitGetExpr(Expr); }
+	void VisitSetExpr(const Set* Expr) override { result = DoVisitSetExpr(Expr); }
+	void VisitThisExpr(const This* Expr) override { result = DoVisitThisExpr(Expr); }
 	
 	protected:
 	virtual R DoVisitTernaryExpr(const Ternary* Expr) = 0;
@@ -60,6 +69,9 @@ struct ExprVisitor : public IExprVisitor
 	virtual R DoVisitLogicalExpr(const Logical* Expr) = 0;
 	virtual R DoVisitCallExpr(const Call* Expr) = 0;
 	virtual R DoVisitLambdaExpr(const Lambda* Expr) = 0;
+	virtual R DoVisitGetExpr(const Get* Expr) = 0;
+	virtual R DoVisitSetExpr(const Set* Expr) = 0;
+	virtual R DoVisitThisExpr(const This* Expr) = 0;
 };
 
 
@@ -325,5 +337,77 @@ struct Lambda : public Expr
 	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitLambdaExpr(this);
+	}
+};
+struct Get;
+typedef std::shared_ptr<Get> GetPtr;
+
+struct Get : public Expr
+{
+	ExprPtr object;
+	Token name;
+	
+	Get(const ExprPtr& inObject, const Token& inName)
+	{
+		this->object = inObject;
+		this->name = inName;
+	}
+	
+	static GetPtr Create(const ExprPtr& inObject, const Token& inName)
+	{
+		return std::make_shared<Get>(inObject, inName);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitGetExpr(this);
+	}
+};
+struct Set;
+typedef std::shared_ptr<Set> SetPtr;
+
+struct Set : public Expr
+{
+	ExprPtr object;
+	Token name;
+	ExprPtr value;
+	
+	Set(const ExprPtr& inObject, const Token& inName, const ExprPtr& inValue)
+	{
+		this->object = inObject;
+		this->name = inName;
+		this->value = inValue;
+	}
+	
+	static SetPtr Create(const ExprPtr& inObject, const Token& inName, const ExprPtr& inValue)
+	{
+		return std::make_shared<Set>(inObject, inName, inValue);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitSetExpr(this);
+	}
+};
+struct This;
+typedef std::shared_ptr<This> ThisPtr;
+
+struct This : public Expr
+{
+	Token keyword;
+	
+	This(const Token& inKeyword)
+	{
+		this->keyword = inKeyword;
+	}
+	
+	static ThisPtr Create(const Token& inKeyword)
+	{
+		return std::make_shared<This>(inKeyword);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitThisExpr(this);
 	}
 };

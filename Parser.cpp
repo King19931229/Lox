@@ -75,6 +75,11 @@ ExprPtr Parser::Assignment()
 			expr = Assign::Create(var->name, value);
 			return expr;
 		}
+		else if (Get* get = dynamic_cast<Get*>(expr.get()))
+		{
+			expr = Set::Create(get->object, get->name, value);
+			return expr;
+		}
 		Lox::GetInstance().RuntimeError(equal.line, equal.column, "Invalid assignment target.");
 		return nullptr;
 	}
@@ -275,6 +280,11 @@ ExprPtr Parser::Call()
 		{
 			expr = FinishCall(expr);
 		}
+		else if (Match(TokenType::DOT))
+		{
+			Token name = Consume(TokenType::IDENTIFIER, "Expect property name after '.'.");
+			expr = Get::Create(expr, name);
+		}
 		else
 		{
 			break;
@@ -293,6 +303,11 @@ ExprPtr Parser::Primary()
 	if (Match(TokenType::FALSE, TokenType::TRUE, TokenType::NIL, TokenType::NUMBER, TokenType::STRING))
 	{
 		return Literal::Create(Previous());
+	}
+
+	if (Match(TokenType::THIS))
+	{
+		return This::Create(Previous());
 	}
 
 	if (Match(TokenType::LEFT_PAREN))
@@ -389,9 +404,13 @@ StatPtr Parser::Declaration()
 	{
 		return VarDeclaration();
 	}
-	else if(Match(TokenType::FUN))
+	else if (Match(TokenType::FUN))
 	{
 		return FunDeclaration("function");
+	}
+	else if (Match(TokenType::CLASS))
+	{
+		return ClassDeclaration();
 	}
 	else
 	{
@@ -435,6 +454,19 @@ StatPtr Parser::FunDeclaration(const std::string& kind)
 	Consume(TokenType::LEFT_BRACE, "Expect '{' before function body.");
 	StatPtr body = BlockStatement();
 	return Function::Create(name, parameters, dynamic_cast<Block*>(body.get())->statements);
+}
+
+StatPtr Parser::ClassDeclaration()
+{
+	Token name = Consume(TokenType::IDENTIFIER, "Expect class name.");
+	Consume(TokenType::LEFT_BRACE, "Expect '{' before class body.");
+	std::vector<StatPtr> methods;
+	while (!Check(TokenType::RIGHT_BRACE) && !IsAtEnd())
+	{
+		methods.push_back(FunDeclaration("method"));
+	}
+	Consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.");
+	return Class::Create(name, methods);
 }
 
 StatPtr Parser::PrintStatement()

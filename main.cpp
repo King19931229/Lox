@@ -8,9 +8,10 @@
 int main(int argc, char* argv[])
 {
 	TestUnit::RunExpressionInterpreterTest();
+	TestUnit::RunResolverTest();
 	TestUnit::RunStatementInterpreterTest();
 	TestUnit::RunFunctionInterpreterTest();
-	TestUnit::RunResolverTest();
+	TestUnit::RunClassInterpreterTest();
 	//Lox& lox = Lox::GetInstance();
 	//lox.Run(0, nullptr);
 	//lox.Run(argc - 1, argc > 1 ? &argv[1] : nullptr);
@@ -28,8 +29,11 @@ int main(int argc, char* argv[])
 		"Logical : Expr left, Token op, Expr right",
 		"Call : Expr callee, Token paren, List<Expr> arguments",
 		"Lambda: Token keyword, List<Token> params, List<Stat> body",
+		"Get: Expr object, Token name",
+		"Set : Expr object, Token name, Expr value",
+		"This: Token keyword",
 	});
-	generator.DefineAST("D:/Lox/", "Stat",
+	generator.DefineAST("G:/Lox/", "Stat",
 	{
 		"Expression : Expr expression",
 		"Print : Expr expression",
@@ -40,6 +44,7 @@ int main(int argc, char* argv[])
 		"Break : Token keyword",
 		"Function : Token name, List<Token> params, List<Stat> body",
 		"Return: Token keyword, Expr value",
+		"Class: Token name, List<Stat> methods",
 	});
 
 	return 0;

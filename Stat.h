@@ -12,6 +12,7 @@ struct While;
 struct Break;
 struct Function;
 struct Return;
+struct Class;
 struct Stat;
 
 struct IStatVisitor
@@ -26,6 +27,7 @@ struct IStatVisitor
 	virtual void VisitBreakStat(const Break* Stat) = 0;
 	virtual void VisitFunctionStat(const Function* Stat) = 0;
 	virtual void VisitReturnStat(const Return* Stat) = 0;
+	virtual void VisitClassStat(const Class* Stat) = 0;
 };
 
 template<typename R>
@@ -44,6 +46,7 @@ struct StatVisitor : public IStatVisitor
 	void VisitBreakStat(const Break* Stat) override { result = DoVisitBreakStat(Stat); }
 	void VisitFunctionStat(const Function* Stat) override { result = DoVisitFunctionStat(Stat); }
 	void VisitReturnStat(const Return* Stat) override { result = DoVisitReturnStat(Stat); }
+	void VisitClassStat(const Class* Stat) override { result = DoVisitClassStat(Stat); }
 	
 	protected:
 	virtual R DoVisitExpressionStat(const Expression* Stat) = 0;
@@ -55,6 +58,7 @@ struct StatVisitor : public IStatVisitor
 	virtual R DoVisitBreakStat(const Break* Stat) = 0;
 	virtual R DoVisitFunctionStat(const Function* Stat) = 0;
 	virtual R DoVisitReturnStat(const Return* Stat) = 0;
+	virtual R DoVisitClassStat(const Class* Stat) = 0;
 };
 
 
@@ -62,6 +66,7 @@ struct Stat
 {
 	virtual ~Stat() = default;
 
+	// Accept 方法现在是非模板的，并且接受基接口的引用
 	virtual void Accept(IStatVisitor& visitor) const = 0;
 };
 
@@ -282,5 +287,29 @@ struct Return : public Stat
 	void Accept(IStatVisitor& visitor) const override
 	{
 		visitor.VisitReturnStat(this);
+	}
+};
+struct Class;
+typedef std::shared_ptr<Class> ClassPtr;
+
+struct Class : public Stat
+{
+	Token name;
+	std::vector<StatPtr> methods;
+	
+	Class(const Token& inName, const std::vector<StatPtr>& inMethods)
+	{
+		this->name = inName;
+		this->methods = inMethods;
+	}
+	
+	static ClassPtr Create(const Token& inName, const std::vector<StatPtr>& inMethods)
+	{
+		return std::make_shared<Class>(inName, inMethods);
+	}
+	
+	void Accept(IStatVisitor& visitor) const override
+	{
+		visitor.VisitClassStat(this);
 	}
 };

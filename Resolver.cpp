@@ -77,6 +77,22 @@ void Resolver::ResolveLocal(const Expr* expr, const Token& name)
 	}
 }
 
+void Resolver::ResolveFunction(const Stat* function, FunctionType type)
+{
+	auto enclosingFunction = currentFunctionType;
+	currentFunctionType = type;
+	BeginScope();
+	const Function* funcStat = static_cast<const Function*>(function);
+	for (const Token& param : funcStat->params)
+	{
+		Declare(param);
+		Define(param);
+	}
+	Resolve(funcStat->body);
+	EndScope();
+	currentFunctionType = enclosingFunction;
+}
+
 bool Resolver::DoVisitVariableExpr(const Variable* expr)
 {
 	if (!scopes.empty())
@@ -154,7 +170,7 @@ bool Resolver::DoVisitCallExpr(const Call* expr)
 bool Resolver::DoVisitLambdaExpr(const Lambda* expr)
 {
 	auto enclosingFunction = currentFunctionType;
-	currentFunctionType = IN_FUNCTION;
+	currentFunctionType = FunctionType::FUNCTION;
 	BeginScope();
 	for (const Token& param : expr->params)
 	{
@@ -164,6 +180,30 @@ bool Resolver::DoVisitLambdaExpr(const Lambda* expr)
 	Resolve(expr->body);
 	EndScope();
 	currentFunctionType = enclosingFunction;
+	return true;
+}
+
+bool Resolver::DoVisitGetExpr(const Get* expr)
+{
+	Resolve(expr->object);
+	return true;
+}
+
+bool Resolver::DoVisitSetExpr(const Set* expr)
+{
+	Resolve(expr->value);
+	Resolve(expr->object);
+	return true;
+}
+
+bool Resolver::DoVisitThisExpr(const This* expr)
+{
+	if (currentClassType == ClassType::NONE)
+	{
+		Lox::GetInstance().SemanticError(expr->keyword.line, expr->keyword.column,
+			"'this' cannot be used outside of a class.");
+	}
+	ResolveLocal(expr, expr->keyword);
 	return true;
 }
 
@@ -213,7 +253,7 @@ bool Resolver::DoVisitWhileStat(const While* stat)
 {
 	auto enclosingWhile = currentWhileType;
 	Resolve(stat->condition);
-	currentWhileType = IN_WHILE;
+	currentWhileType = WhileType::IN_WHILE;
 	Resolve(stat->body);
 	currentWhileType = enclosingWhile;
 	return true;
@@ -223,26 +263,13 @@ bool Resolver::DoVisitFunctionStat(const Function* stat)
 {
 	Declare(stat->name);
 	Define(stat->name);
-
-	auto enclosingFunction = currentFunctionType;
-	currentFunctionType = IN_FUNCTION;
-
-	BeginScope();
-	for (const Token& param : stat->params)
-	{
-		Declare(param);
-		Define(param);
-	}
-	Resolve(stat->body);
-	EndScope();
-
-	currentFunctionType = enclosingFunction;
+	ResolveFunction(stat, FunctionType::FUNCTION);
 	return true;
 }
 
 bool Resolver::DoVisitBreakStat(const Break* stat)
 {
-	if (currentWhileType == NOT_IN_WHILE)
+	if (currentWhileType == WhileType::NOT_IN_WHILE)
 	{
 		Lox::GetInstance().SemanticError(stat->keyword.line, stat->keyword.column,
 			"'break' statement not within a loop.");
@@ -252,7 +279,7 @@ bool Resolver::DoVisitBreakStat(const Break* stat)
 
 bool Resolver::DoVisitReturnStat(const Return* stat)
 {
-	if (currentFunctionType == NOT_IN_FUNCTION)
+	if (currentFunctionType == FunctionType::NONE)
 	{
 		Lox::GetInstance().SemanticError(stat->keyword.line, stat->keyword.column,
 			"'return' statement not within a function.");
@@ -261,5 +288,24 @@ bool Resolver::DoVisitReturnStat(const Return* stat)
 	{
 		Resolve(stat->value);
 	}
+	return true;
+}
+
+bool Resolver::DoVisitClassStat(const Class* stat)
+{
+	ClassType enclosingClass = currentClassType;
+	currentClassType = ClassType::CLASS;
+	Declare(stat->name);
+	Define(stat->name);
+	// Create a scope out of the method scopes to hold "this"
+	scopes.push_back(Scope());
+	Scope& scope = scopes.back();
+	scope["this"] = true;
+	for (const StatPtr& method : stat->methods)
+	{
+		ResolveFunction(method.get(), FunctionType::METHOD);
+	}
+	scopes.pop_back();
+	currentClassType = enclosingClass;
 	return true;
 }

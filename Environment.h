@@ -1,29 +1,32 @@
 #pragma once
 #include "Value.h"
 #include <unordered_map>
+#include <memory> // 确保包含了 <memory>
 
-class Environment
+typedef std::shared_ptr<class Environment> EnvironmentPtr;
+
+class Environment : public std::enable_shared_from_this<Environment>
 {
 protected:
 	std::unordered_map<std::string, ValuePtr> values;
-	Environment* enclosing = nullptr;
+	EnvironmentPtr enclosing = nullptr;
 	const struct While* currentWhile = nullptr;
 	ValuePtr returnValue = nullptr;
 	bool isFunctionEnv = false;
 public:
-	Environment(Environment* parent = nullptr, bool isFunction = false)
+	Environment(EnvironmentPtr parent = nullptr, bool isFunction = false)
 		: enclosing(parent), isFunctionEnv(isFunction)
 	{
 	}
-	Environment* Clone()
+	EnvironmentPtr Clone()
 	{
-		Environment* newEnv = new Environment(enclosing, isFunctionEnv);
+		auto newEnv = std::make_shared<Environment>(enclosing, isFunctionEnv);
 		newEnv->values = values;
 		return newEnv;
 	}
-	Environment* GetFunctionEnv()
+	EnvironmentPtr GetFunctionEnv()
 	{
-		Environment* env = this;
+		EnvironmentPtr env = shared_from_this();
 		while (env)
 		{
 			if (env->isFunctionEnv)
@@ -34,19 +37,10 @@ public:
 		}
 		return nullptr;
 	}
-	Environment* GetTopEnv()
+	EnvironmentPtr GetTopEnv()
 	{
-		Environment* env = this;
+		EnvironmentPtr env = shared_from_this();
 		while (env->enclosing)
-		{
-			env = env->enclosing;
-		}
-		return env;
-	}
-	Environment* Ancestor(int distance)
-	{
-		Environment* env = this;
-		for (int i = 0; i < distance; ++i)
 		{
 			env = env->enclosing;
 		}
@@ -54,7 +48,7 @@ public:
 	}
 	void SetCurrentWhile(const While* whileStat)
 	{
-		Environment* env = GetFunctionEnv();
+		auto env = GetFunctionEnv();
 		if (!env)
 		{
 			env = GetTopEnv();
@@ -63,7 +57,7 @@ public:
 	}
 	const While* GetCurrentWhile()
 	{
-		Environment* env = GetFunctionEnv();
+		auto env = GetFunctionEnv();
 		if (!env)
 		{
 			env = GetTopEnv();
@@ -72,7 +66,7 @@ public:
 	}
 	void SetReturnValue(ValuePtr value)
 	{
-		Environment* funcEnv = GetFunctionEnv();
+		auto funcEnv = GetFunctionEnv();
 		if (funcEnv)
 		{
 			funcEnv->returnValue = value;
@@ -80,12 +74,12 @@ public:
 	}
 	bool HasReturnValue()
 	{
-		Environment* funcEnv = GetFunctionEnv();
+		auto funcEnv = GetFunctionEnv();
 		return funcEnv && funcEnv->returnValue != nullptr;
 	}
 	ValuePtr GetReturnValue()
 	{
-		Environment* funcEnv = GetFunctionEnv();
+		auto funcEnv = GetFunctionEnv();
 		if (funcEnv)
 		{
 			return funcEnv->returnValue;
@@ -118,7 +112,11 @@ public:
 	}
 	ValuePtr GetAt(int distance, const std::string& name, size_t line = 0, size_t column = 0)
 	{
-		Environment* env = Ancestor(distance);
+		EnvironmentPtr env = shared_from_this();
+		for (int i = 0; i < distance; ++i)
+		{
+			env = env->enclosing;
+		}
 		auto it = env->values.find(name);
 		if (it != env->values.end())
 		{
@@ -141,15 +139,13 @@ public:
 		}
 		Lox::GetInstance().RuntimeError(line, column, "Undefined variable '%s'.", name.c_str());
 	}
-	void AssignAt(int distance, Token name, ValuePtr value)
-	{
-		Environment* env = Ancestor(distance);
-		auto it = env->values.find(name.lexeme);
-		if (it != env->values.end())
-		{
-			it->second = value;
-			return;
-		}
-		Lox::GetInstance().RuntimeError(name.line, name.column, "Undefined variable '%s'.", name.lexeme.c_str());
-	}
+    void AssignAt(int distance, const Token& name, ValuePtr value)
+    {
+        EnvironmentPtr env = shared_from_this();
+        for (int i = 0; i < distance; ++i)
+        {
+            env = env->enclosing;
+        }
+        env->values[name.lexeme] = value;
+    }
 };
