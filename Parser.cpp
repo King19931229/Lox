@@ -436,24 +436,38 @@ StatPtr Parser::FunDeclaration(const std::string& kind)
 {
 	Consume(TokenType::IDENTIFIER, "Expect " + kind + " name.");
 	Token name = Previous();
-	Consume(TokenType::LEFT_PAREN, "Expect '(' after function name.");
-	std::vector<Token> parameters;
-	if (!Check(TokenType::RIGHT_PAREN))
+
+	if (Check(TokenType::LEFT_PAREN))
 	{
-		do
+		std::vector<Token> parameters;
+		Consume(TokenType::LEFT_PAREN, "Expect '(' after function name.");
+		if (!Check(TokenType::RIGHT_PAREN))
 		{
-			if (parameters.size() >= 255)
+			do
 			{
-				Error(Peek(), "Can't have more than 255 parameters.");
-			}
-			Consume(TokenType::IDENTIFIER, "Expect parameter name.");
-			parameters.push_back(Previous());
-		} while (Match(TokenType::COMMA));
+				if (parameters.size() >= 255)
+				{
+					Error(Peek(), "Can't have more than 255 parameters.");
+				}
+				Consume(TokenType::IDENTIFIER, "Expect parameter name.");
+				parameters.push_back(Previous());
+			} while (Match(TokenType::COMMA));
+		}
+		Consume(TokenType::RIGHT_PAREN, "Expect ')' after parameters.");
+		Consume(TokenType::LEFT_BRACE, "Expect '{' before function body.");
+		StatPtr body = BlockStatement();
+		return Function::Create(name, parameters, dynamic_cast<Block*>(body.get())->statements);
 	}
-	Consume(TokenType::RIGHT_PAREN, "Expect ')' after parameters.");
-	Consume(TokenType::LEFT_BRACE, "Expect '{' before function body.");
-	StatPtr body = BlockStatement();
-	return Function::Create(name, parameters, dynamic_cast<Block*>(body.get())->statements);
+	else
+	{
+		if (kind != "method")
+		{		
+			Error(Peek(), "Expect '(' after function name.");
+		}
+		Consume(TokenType::LEFT_BRACE, "Expect '{' before getter body.");
+		StatPtr body = BlockStatement();
+		return Getter::Create(name, dynamic_cast<Block*>(body.get())->statements);
+	}
 }
 
 StatPtr Parser::ClassDeclaration()
@@ -461,12 +475,29 @@ StatPtr Parser::ClassDeclaration()
 	Token name = Consume(TokenType::IDENTIFIER, "Expect class name.");
 	Consume(TokenType::LEFT_BRACE, "Expect '{' before class body.");
 	std::vector<StatPtr> methods;
+	std::vector<StatPtr> getters;
+	std::vector<StatPtr> classMethods;
 	while (!Check(TokenType::RIGHT_BRACE) && !IsAtEnd())
 	{
-		methods.push_back(FunDeclaration("method"));
+		if (Match(TokenType::CLASS))
+		{
+			classMethods.push_back(FunDeclaration("class method"));
+		}
+		else
+		{
+			StatPtr func = FunDeclaration("method");
+			if (Getter* getter = dynamic_cast<Getter*>(func.get()))
+			{
+				getters.push_back(func);
+			}
+			else
+			{
+				methods.push_back(func);
+			}
+		}
 	}
 	Consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.");
-	return Class::Create(name, methods);
+	return Class::Create(name, methods, getters, classMethods);
 }
 
 StatPtr Parser::PrintStatement()

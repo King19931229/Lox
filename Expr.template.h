@@ -10,6 +10,18 @@ struct Expr
 {
 	virtual ~Expr() = default;
 
+	template <typename T>
+	T* As() const
+	{
+		return static_cast<T>(this);
+	}
+
+	template <typename T>
+	T* As()
+	{
+		return static_cast<T*>(this);
+	}
+
 	// Accept 方法现在接受 IExprVisitor
 	virtual void Accept(IExprVisitor& visitor) const = 0;
 };

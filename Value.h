@@ -13,6 +13,7 @@ enum ValueType
 	TYPE_BOOL,
 	TYPE_NIL,
 	TYPE_CALLABLE,
+	TYPE_CLASS,
 	TYPE_INSTANCE,
 	TYPE_ERROR // 新增：错误类型
 };

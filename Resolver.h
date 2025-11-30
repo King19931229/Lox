@@ -23,6 +23,8 @@ protected:
 	{
 		NONE,
 		FUNCTION,
+		INITIALIZER,
+		CLASS,
 		METHOD
 	};
 	FunctionType currentFunctionType = FunctionType::NONE;
@@ -44,6 +46,7 @@ protected:
 
 	void ResolveLocal(const Expr* expr, const Token& name);
 	void ResolveFunction(const Stat* function, FunctionType type);
+	void ResolveGetter(const Stat* getter);
 public:
 	Resolver(class Interpreter* inInterpreter);
 	~Resolver();
@@ -74,6 +77,7 @@ public:
 	virtual bool DoVisitWhileStat(const While* stat) override;
 	virtual bool DoVisitBreakStat(const Break* stat) override;
 	virtual bool DoVisitFunctionStat(const Function* stat) override;
+	virtual bool DoVisitGetterStat(const Getter* stat) override;
 	virtual bool DoVisitReturnStat(const Return* stat) override;
 	virtual bool DoVisitClassStat(const Class* stat) override;
 };

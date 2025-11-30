@@ -21,6 +21,8 @@ public:
 protected:
 	friend struct LoxLambda;
 	friend struct LoxFunction;
+	friend struct LoxGetter;
+
 	EnvironmentPtr globalEnvironment = nullptr;
 	EnvironmentPtr environment = nullptr;
 	const class Resolver* resolver = nullptr;
@@ -37,6 +39,7 @@ protected:
 
 	ValuePtr CallFunction(const LoxFunction* function, const std::vector<ValuePtr>& arguments);
 	ValuePtr CallLambda(const LoxLambda* lambda, const std::vector<ValuePtr>& arguments);
+	ValuePtr CallGetter(const LoxGetter* getter);
 
 	ValuePtr Evaluate(const ExprPtr& expr);
 	void Execute(const StatPtr& stat);
@@ -66,6 +69,7 @@ protected:
 	virtual bool DoVisitWhileStat(const While* stat) override;
 	virtual bool DoVisitBreakStat(const Break* stat) override;
 	virtual bool DoVisitFunctionStat(const Function* stat) override;
+	virtual bool DoVisitGetterStat(const Getter* stat) override;
 	virtual bool DoVisitReturnStat(const Return* stat) override;
 	virtual bool DoVisitClassStat(const Class* stat) override;
 };

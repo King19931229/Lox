@@ -11,6 +11,7 @@ struct If;
 struct While;
 struct Break;
 struct Function;
+struct Getter;
 struct Return;
 struct Class;
 struct Stat;
@@ -26,6 +27,7 @@ struct IStatVisitor
 	virtual void VisitWhileStat(const While* Stat) = 0;
 	virtual void VisitBreakStat(const Break* Stat) = 0;
 	virtual void VisitFunctionStat(const Function* Stat) = 0;
+	virtual void VisitGetterStat(const Getter* Stat) = 0;
 	virtual void VisitReturnStat(const Return* Stat) = 0;
 	virtual void VisitClassStat(const Class* Stat) = 0;
 };
@@ -45,6 +47,7 @@ struct StatVisitor : public IStatVisitor
 	void VisitWhileStat(const While* Stat) override { result = DoVisitWhileStat(Stat); }
 	void VisitBreakStat(const Break* Stat) override { result = DoVisitBreakStat(Stat); }
 	void VisitFunctionStat(const Function* Stat) override { result = DoVisitFunctionStat(Stat); }
+	void VisitGetterStat(const Getter* Stat) override { result = DoVisitGetterStat(Stat); }
 	void VisitReturnStat(const Return* Stat) override { result = DoVisitReturnStat(Stat); }
 	void VisitClassStat(const Class* Stat) override { result = DoVisitClassStat(Stat); }
 	
@@ -57,6 +60,7 @@ struct StatVisitor : public IStatVisitor
 	virtual R DoVisitWhileStat(const While* Stat) = 0;
 	virtual R DoVisitBreakStat(const Break* Stat) = 0;
 	virtual R DoVisitFunctionStat(const Function* Stat) = 0;
+	virtual R DoVisitGetterStat(const Getter* Stat) = 0;
 	virtual R DoVisitReturnStat(const Return* Stat) = 0;
 	virtual R DoVisitClassStat(const Class* Stat) = 0;
 };
@@ -65,6 +69,18 @@ struct StatVisitor : public IStatVisitor
 struct Stat
 {
 	virtual ~Stat() = default;
+
+	template <typename T>
+	T* As() const
+	{
+		return static_cast<T*>(this);
+	}
+
+	template <typename T>
+	T* As()
+	{
+		return static_cast<T*>(this);
+	}
 
 	// Accept 方法现在是非模板的，并且接受基接口的引用
 	virtual void Accept(IStatVisitor& visitor) const = 0;
@@ -265,6 +281,30 @@ struct Function : public Stat
 		visitor.VisitFunctionStat(this);
 	}
 };
+struct Getter;
+typedef std::shared_ptr<Getter> GetterPtr;
+
+struct Getter : public Stat
+{
+	Token name;
+	std::vector<StatPtr> body;
+	
+	Getter(const Token& inName, const std::vector<StatPtr>& inBody)
+	{
+		this->name = inName;
+		this->body = inBody;
+	}
+	
+	static GetterPtr Create(const Token& inName, const std::vector<StatPtr>& inBody)
+	{
+		return std::make_shared<Getter>(inName, inBody);
+	}
+	
+	void Accept(IStatVisitor& visitor) const override
+	{
+		visitor.VisitGetterStat(this);
+	}
+};
 struct Return;
 typedef std::shared_ptr<Return> ReturnPtr;
 
@@ -296,16 +336,20 @@ struct Class : public Stat
 {
 	Token name;
 	std::vector<StatPtr> methods;
+	std::vector<StatPtr> getters;
+	std::vector<StatPtr> classMethods;
 	
-	Class(const Token& inName, const std::vector<StatPtr>& inMethods)
+	Class(const Token& inName, const std::vector<StatPtr>& inMethods, const std::vector<StatPtr>& inGetters, const std::vector<StatPtr>& inClassMethods)
 	{
 		this->name = inName;
 		this->methods = inMethods;
+		this->getters = inGetters;
+		this->classMethods = inClassMethods;
 	}
 	
-	static ClassPtr Create(const Token& inName, const std::vector<StatPtr>& inMethods)
+	static ClassPtr Create(const Token& inName, const std::vector<StatPtr>& inMethods, const std::vector<StatPtr>& inGetters, const std::vector<StatPtr>& inClassMethods)
 	{
-		return std::make_shared<Class>(inName, inMethods);
+		return std::make_shared<Class>(inName, inMethods, inGetters, inClassMethods);
 	}
 	
 	void Accept(IStatVisitor& visitor) const override

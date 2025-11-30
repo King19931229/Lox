@@ -93,6 +93,18 @@ void Resolver::ResolveFunction(const Stat* function, FunctionType type)
 	currentFunctionType = enclosingFunction;
 }
 
+void Resolver::ResolveGetter(const Stat* getter)
+{
+	// Getters have no parameters.
+	auto enclosingFunction = currentFunctionType;
+	currentFunctionType = FunctionType::METHOD;
+	const Getter* getterStat = static_cast<const Getter*>(getter);
+	BeginScope();
+	Resolve(getterStat->body);
+	EndScope();
+	currentFunctionType = enclosingFunction;
+}
+
 bool Resolver::DoVisitVariableExpr(const Variable* expr)
 {
 	if (!scopes.empty())
@@ -203,6 +215,11 @@ bool Resolver::DoVisitThisExpr(const This* expr)
 		Lox::GetInstance().SemanticError(expr->keyword.line, expr->keyword.column,
 			"'this' cannot be used outside of a class.");
 	}
+	if (currentFunctionType == FunctionType::CLASS)
+	{
+		Lox::GetInstance().SemanticError(expr->keyword.line, expr->keyword.column,
+			"'this' cannot be used in a class method.");
+	}
 	ResolveLocal(expr, expr->keyword);
 	return true;
 }
@@ -267,6 +284,11 @@ bool Resolver::DoVisitFunctionStat(const Function* stat)
 	return true;
 }
 
+bool Resolver::DoVisitGetterStat(const Getter* stat)
+{
+	return true;
+}
+
 bool Resolver::DoVisitBreakStat(const Break* stat)
 {
 	if (currentWhileType == WhileType::NOT_IN_WHILE)
@@ -283,6 +305,11 @@ bool Resolver::DoVisitReturnStat(const Return* stat)
 	{
 		Lox::GetInstance().SemanticError(stat->keyword.line, stat->keyword.column,
 			"'return' statement not within a function.");
+	}
+	if (currentFunctionType == FunctionType::INITIALIZER && stat->value)
+	{
+		Lox::GetInstance().SemanticError(stat->keyword.line, stat->keyword.column,
+			"Cannot return a value from an initializer.");
 	}
 	if (stat->value)
 	{
@@ -303,7 +330,23 @@ bool Resolver::DoVisitClassStat(const Class* stat)
 	scope["this"] = true;
 	for (const StatPtr& method : stat->methods)
 	{
-		ResolveFunction(method.get(), FunctionType::METHOD);
+		Function* func = static_cast<Function*>(method.get());
+		if (func->name.lexeme == "init")
+		{
+			ResolveFunction(method.get(), FunctionType::INITIALIZER);
+		}
+		else
+		{
+			ResolveFunction(method.get(), FunctionType::METHOD);
+		}
+	}
+	for (const StatPtr& getter : stat->getters)
+	{
+		ResolveGetter(getter.get());
+	}
+	for (const StatPtr& method : stat->classMethods)
+	{
+		ResolveFunction(method.get(), FunctionType::CLASS);
 	}
 	scopes.pop_back();
 	currentClassType = enclosingClass;

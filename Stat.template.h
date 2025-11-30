@@ -9,6 +9,18 @@ struct Stat
 {
 	virtual ~Stat() = default;
 
+	template <typename T>
+	T* As() const
+	{
+		return static_cast<T*>(this);
+	}
+
+	template <typename T>
+	T* As()
+	{
+		return static_cast<T*>(this);
+	}
+
 	// Accept 方法现在是非模板的，并且接受基接口的引用
 	virtual void Accept(IStatVisitor& visitor) const = 0;
 };

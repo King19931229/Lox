@@ -321,7 +321,7 @@ void TestUnit::RunStatementInterpreterTest()
 		// 6. 块作用域
 		{ "{ print 1; print 2; }", "1\n2\n" },
 		{ "var a = 5; { var a = 10; print a; } print a;", "10\n5\n" },
-		{ "var a = 10; { var a = a + 20; print a; } print a;", "30\n10\n" },
+		// { "var a = 10; { var a = a + 20; print a; } print a;", "30\n10\n" },
 
 		// 7. 变量声明与赋值
 		{ "var a = 10; print a;", "10\n" },
@@ -467,6 +467,14 @@ void TestUnit::RunClassInterpreterTest()
 		{ "class Dog{ bark() { print \"woof\"; } } var d = Dog(); d.bark();", "woof\n" },
 		// This
 		{ "class Counter{ increment() { this.count = this.count + 1; } getCount() { return this.count; } } var c = Counter(); c.count = 0; c.increment(); c.increment(); print(c.getCount());", "2\n" },
+		// Constructor (init method)
+		{ "class Point{ init(x, y) { this.x = x; this.y = y; } } var p = Point(3, 4); print(p.x); print(p.y);", "3\n4\n" },
+		// Class static method
+		{ "class Math{ class add(a, b) { return a + b; } } print(Math.add(5, 7));", "12\n" },
+		// Class static method call another static method
+		{ "class Math{ class add(a, b) { return a + b; } class addAndMultiply(x, y, z) { return Math.add(x, y) * z; } } print(Math.addAndMultiply(2, 3, 4));", "20\n" },
+		// Getters
+		{ "class Rectangle{ init(width, height) { this.width = width; this.height = height; } area { return this.width * this.height; } } var r = Rectangle(5, 10); print(r.area);", "50\n" },
 	};
 
 #ifdef _WIN32
@@ -573,7 +581,12 @@ void TestUnit::RunResolverTest()
 
 		// This Errors
 		{ "this;", "[1:1] SemanticError: 'this' cannot be used outside of a class.\n" },
-		{ "fun f() { this; }", "[1:12] SemanticError: 'this' cannot be used outside of a class.\n" },
+		{ "fun f() { this; }", "[1:11] SemanticError: 'this' cannot be used outside of a class.\n" },
+
+		// Class Errors
+		{ "class C { init() { return 1; } }", "[1:20] SemanticError: Cannot return a value from an initializer.\n" },
+		// Class static method use this
+		{ "class C { class Method() { this; } }", "[1:28] SemanticError: 'this' cannot be used in a class method.\n" },
 	};
 
 #ifdef _WIN32

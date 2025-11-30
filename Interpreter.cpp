@@ -49,7 +49,7 @@ ValuePtr Interpreter::InterpretExpr(const ExprPtr& expr)
 
 void Interpreter::Interpret(const std::vector<StatPtr>& statements)
 {
-	for(const StatPtr& stat : statements)
+	for (const StatPtr& stat : statements)
 	{
 		Execute(stat);
 	}
@@ -99,7 +99,7 @@ ValuePtr Interpreter::DoVisitBinaryExpr(const Binary* expr)
 
 	switch (expr->op.type)
 	{
-			// 算术运算符
+		// 算术运算符
 		case TokenType::MINUS:         return left - right;
 		case TokenType::SLASH:         return left / right;
 		case TokenType::STAR:          return left * right;
@@ -245,7 +245,7 @@ ValuePtr Interpreter::DoVisitCallExpr(const Call* expr)
 	{
 		arguments.push_back(Evaluate(argumentExpr));
 	}
-	
+
 	LoxCallable* function = dynamic_cast<LoxCallable*>(callee.get());
 	if (!function)
 	{
@@ -273,27 +273,47 @@ ValuePtr Interpreter::DoVisitLambdaExpr(const Lambda* expr)
 ValuePtr Interpreter::DoVisitGetExpr(const Get* expr)
 {
 	ValuePtr object = Evaluate(expr->object);
-	if (object->type != TYPE_INSTANCE)
+	if (object->type != TYPE_INSTANCE && object->type != TYPE_CLASS)
 	{
-		Lox::GetInstance().RuntimeError(expr->name.line, expr->name.column, "Only instances have properties.");
+		Lox::GetInstance().RuntimeError(expr->name.line, expr->name.column, "Only instances or class have properties.");
 		return ErrorValue::Create("Only instances have properties.");
 	}
-	LoxInstance* instance = static_cast<LoxInstance*>(object.get());
-	return instance->Get(expr->name);
+	if (object->type == TYPE_INSTANCE)
+	{
+		LoxInstance* instance = static_cast<LoxInstance*>(object.get());
+		return instance->Get(this, expr->name);
+	}
+	else if (object->type == TYPE_CLASS)
+	{
+		LoxClass* klass = static_cast<LoxClass*>(object.get());
+		return klass->Get(expr->name);
+	}
+	return ErrorValue::Create("Unreachable code in DoVisitGetExpr.");
 }
 
 ValuePtr Interpreter::DoVisitSetExpr(const Set* expr)
 {
 	ValuePtr object = Evaluate(expr->object);
-	if (object->type != TYPE_INSTANCE)
+	if (object->type != TYPE_INSTANCE && object->type != TYPE_CLASS)
 	{
-		Lox::GetInstance().RuntimeError(expr->name.line, expr->name.column, "Only instances have properties.");
+		Lox::GetInstance().RuntimeError(expr->name.line, expr->name.column, "Only instances or class have properties.");
 		return ErrorValue::Create("Only instances have properties.");
 	}
-	LoxInstance* instance = static_cast<LoxInstance*>(object.get());
-	ValuePtr value = Evaluate(expr->value);
-	instance->Set(expr->name, value);
-	return value;
+	if (object->type == TYPE_INSTANCE)
+	{
+		LoxInstance* instance = static_cast<LoxInstance*>(object.get());
+		ValuePtr value = Evaluate(expr->value);
+		instance->Set(expr->name, value);
+		return value;
+	}
+	else if (object->type == TYPE_CLASS)
+	{
+		LoxClass* klass = static_cast<LoxClass*>(object.get());
+		ValuePtr value = Evaluate(expr->value);
+		klass->Set(expr->name, value);
+		return value;
+	}
+	return ErrorValue::Create("Unreachable code in DoVisitSetExpr.");
 }
 
 ValuePtr Interpreter::DoVisitThisExpr(const This* expr)
@@ -414,8 +434,13 @@ bool Interpreter::DoVisitBlockStat(const Block* stat)
 
 bool Interpreter::DoVisitFunctionStat(const Function* stat)
 {
-	ValuePtr function = LoxFunction::Create(stat, environment);
+	ValuePtr function = LoxFunction::Create(stat, environment, false);
 	environment->Define(stat->name.lexeme, function, stat->name.line, stat->name.column);
+	return true;
+}
+
+bool Interpreter::DoVisitGetterStat(const Getter* stat)
+{
 	return true;
 }
 
@@ -438,7 +463,40 @@ bool Interpreter::DoVisitReturnStat(const Return* stat)
 
 ValuePtr LoxClass::Call(Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
 {
-	return LoxInstance::Create(shared_from_this());
+	ValuePtr instance = LoxInstance::Create(shared_from_this());
+	if (ValuePtr initializer = FindMethod("init"))
+	{
+		LoxFunction* initFunction = static_cast<LoxFunction*>(initializer.get());
+		ValuePtr boundedInit = initFunction->Bound(instance);
+		static_cast<LoxFunction*>(boundedInit.get())->Call(interpreter, arguments);
+	}
+	return instance;
+}
+
+ValuePtr LoxGetter::Call(Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
+{
+	if (arguments.size() != 0)
+	{
+		Lox::GetInstance().RuntimeError("Getter should not have arguments.");
+		return ErrorValue::Create("Getter should not have arguments.");
+	}
+	return interpreter->CallGetter(this);
+}
+
+ValuePtr Interpreter::CallGetter(const LoxGetter* getter)
+{
+	EnvironmentPtr getterEnv = std::make_shared<Environment>(getter->closure, true);
+	ExecuteBlock(getter->declaration->body, getterEnv);
+	ValuePtr returnValue = nullptr;
+	if (getterEnv->HasReturnValue())
+	{
+		returnValue = getterEnv->GetReturnValue();
+	}
+	else
+	{
+		returnValue = NilValue::Create();
+	}
+	return returnValue;
 }
 
 bool Interpreter::DoVisitClassStat(const Class* stat)
@@ -446,14 +504,37 @@ bool Interpreter::DoVisitClassStat(const Class* stat)
 	ERROR_CONTROL_FAST_RETURN;
 	environment->Define(stat->name.lexeme, nullptr, stat->name.line, stat->name.column);
 	ValuePtr klass = LoxClass::Create(stat->name.lexeme);
+
 	auto& methods = static_cast<LoxClass*>(klass.get())->methods;
-	for(StatPtr methodStat : stat->methods)
+	for (StatPtr methodStat : stat->methods)
 	{
 		Function* methodFunction = dynamic_cast<Function*>(methodStat.get());
 		if (methodFunction)
 		{
-			ValuePtr function = LoxFunction::Create(methodFunction, environment);
+			ValuePtr function = LoxFunction::Create(methodFunction, environment, methodFunction->name.lexeme == "init");
 			methods[methodFunction->name.lexeme] = function;
+		}
+	}
+
+	auto& getters = static_cast<LoxClass*>(klass.get())->getters;
+	for (StatPtr getterStat : stat->getters)
+	{
+		Getter* getterFunction = dynamic_cast<Getter*>(getterStat.get());
+		if (getterFunction)
+		{
+			ValuePtr function = LoxGetter::Create(getterFunction, environment);
+			getters[getterFunction->name.lexeme] = function;
+		}
+	}
+
+	auto& classMethods = static_cast<LoxClass*>(klass.get())->classMethods;
+	for (StatPtr classMethodStat : stat->classMethods)
+	{
+		Function* classMethodFunction = dynamic_cast<Function*>(classMethodStat.get());
+		if (classMethodFunction)
+		{
+			ValuePtr function = LoxFunction::Create(classMethodFunction, environment, false);
+			classMethods[classMethodFunction->name.lexeme] = function;
 		}
 	}
 	environment->Assign(stat->name.lexeme, klass, stat->name.line, stat->name.column);
@@ -502,7 +583,7 @@ bool Interpreter::DoVisitBreakStat(const Break* stat)
 	}
 	loopControl = LOOP_BREAK;
 	return true;
- }
+}
 
 void Interpreter::Resolve(const Expr* expr, int depth)
 {

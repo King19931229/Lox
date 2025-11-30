@@ -43,8 +43,9 @@ int main(int argc, char* argv[])
 		"While : Expr condition, Stat body",
 		"Break : Token keyword",
 		"Function : Token name, List<Token> params, List<Stat> body",
+		"Getter: Token name, List<Stat> body",
 		"Return: Token keyword, Expr value",
-		"Class: Token name, List<Stat> methods",
+		"Class: Token name, List<Stat> methods, List<Stat> getters, List<Stat> classMethods",
 	});
 
 	return 0;
