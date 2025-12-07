@@ -1,4 +1,5 @@
 #include "LoxCallable.h"
+#include "Interpreter.h"
 
 LoxLambda::LoxLambda(const Lambda* inDeclaration)
 	: declaration(inDeclaration)
@@ -20,6 +21,11 @@ int LoxLambda::Arity() const
 LoxLambda::operator std::string() const
 {
 	return "<lambda> location: " + std::to_string(declaration->keyword.line) + ":" + std::to_string(declaration->keyword.column);
+}
+
+ValuePtr LoxLambda::Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
+{
+	return interpreter->CallLambda(this, arguments);
 }
 
 LoxFunction::LoxFunction(const Function* inDeclaration, EnvironmentPtr inClosure, bool inIsInitializer)
@@ -44,6 +50,15 @@ ValuePtr LoxFunction::Bound(ValuePtr instance)
 	return boundFunction;
 }
 
+ValuePtr LoxFunction::BoundInner(ValuePtr instance, ValuePtr derivedFunction)
+{
+	EnvironmentPtr boundEnv = std::make_shared<Environment>(closure, true);
+	boundEnv->Define("this", instance, declaration->name.line, declaration->name.column);
+	boundEnv->Define("inner", derivedFunction, declaration->name.line, declaration->name.column);
+	auto boundFunction = std::make_shared<LoxFunction>(declaration, boundEnv, isInitializer);
+	return boundFunction;
+}
+
 int LoxFunction::Arity() const
 {
 	return static_cast<int>(declaration->params.size());
@@ -52,6 +67,41 @@ int LoxFunction::Arity() const
 LoxFunction::operator std::string() const
 {
 	return "<fn " + declaration->name.lexeme + ">";
+}
+
+ValuePtr LoxFunction::Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
+{
+	return interpreter->CallFunction(this, arguments);
+}
+
+LoxNilFunction::LoxNilFunction(int inArity)
+	: arity(inArity)
+{
+	this->type = TYPE_CALLABLE;
+}
+
+ValuePtr LoxNilFunction::Create(int arity)
+{
+	return std::make_shared<LoxNilFunction>(arity);
+}
+
+int LoxNilFunction::Arity() const
+{
+	return arity;
+}
+
+LoxNilFunction::operator std::string() const
+{
+	return "<nil function>";
+}
+
+ValuePtr LoxNilFunction::Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
+{
+	if (arguments.size() != static_cast<size_t>(arity))
+	{
+		Lox::GetInstance().RuntimeError("Expected %d arguments but got %d.", arity, static_cast<int>(arguments.size()));
+	}
+	return NilValue::Create();
 }
 
 LoxGetter::LoxGetter(const Getter* inDeclaration, EnvironmentPtr inClosure)
@@ -125,6 +175,16 @@ ValuePtr LoxClass::FindMethod(const std::string& methodName) const
 	{
 		LoxClass* superClassPtr = static_cast<LoxClass*>(superClass.get());
 		return superClassPtr->FindMethod(methodName);
+	}
+	return nullptr;
+}
+
+ValuePtr LoxClass::FindOwnMethod(const std::string& methodName) const
+{
+	auto it = methods.find(methodName);
+	if (it != methods.end())
+	{
+		return it->second;
 	}
 	return nullptr;
 }
@@ -204,4 +264,34 @@ ValuePtr LoxInstance::Get(Interpreter* interpreter, const Token& name, size_t li
 void LoxInstance::Set(const Token& name, ValuePtr value)
 {
 	fields[name.lexeme] = value;
+}
+
+ValuePtr LoxInstance::RootGet(Interpreter* interpreter, const Token& name, size_t line, size_t column)
+{
+	auto currentClass = std::static_pointer_cast<LoxClass>(klass);
+	ValuePtr boundedFunction = NilValue::Create();
+	while (currentClass)
+	{
+		ValuePtr method = currentClass->FindOwnMethod(name.lexeme);
+		if (method)
+		{
+			auto function = std::static_pointer_cast<LoxFunction>(method);
+			// bind 'this' and 'inner'
+			if (boundedFunction->type != TYPE_NIL)
+			{
+				boundedFunction = function->BoundInner(shared_from_this(), boundedFunction);
+			}
+			else
+			{
+				boundedFunction = function->BoundInner(shared_from_this(), LoxNilFunction::Create(function->Arity()));
+			}
+		}
+		currentClass = std::static_pointer_cast<LoxClass>(currentClass->superClass);
+	}
+	if (boundedFunction->type == TYPE_CALLABLE)
+	{
+		return boundedFunction;
+	}
+	Lox::GetInstance().RuntimeError(line, column, ("Undefined root function '" + name.lexeme + "'.").c_str());
+	return NilValue::Create();
 }

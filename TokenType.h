@@ -14,6 +14,7 @@
 	TOKEN(RIGHT_BRACE,    "}")      /* } */ \
 	TOKEN(COMMA,          ",")      /* , */ \
 	TOKEN(DOT,            ".")      /* . */ \
+	TOKEN(DOTDOT,         "..")     /* .. */ \
 	TOKEN(MINUS,          "-")      /* - */ \
 	TOKEN(PLUS,           "+")      /* + */ \
 	TOKEN(SEMICOLON,      ";")      /* ; */ \

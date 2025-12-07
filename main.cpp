@@ -31,6 +31,7 @@ int main(int argc, char* argv[])
 		"Lambda: Token keyword, List<Token> params, List<Stat> body",
 		"Get: Expr object, Token name",
 		"Set : Expr object, Token name, Expr value",
+		"RootGet: Expr object, Token name",
 		"This: Token keyword",
 		"Super: Token keyword, Token method",
 	});

@@ -481,6 +481,17 @@ void TestUnit::RunClassInterpreterTest()
 		// Super
 		{ "class A{ greet() { print \"Hello from A\"; } } class B < A{ greet() { super.greet(); print \"Hello from B\"; } } var b = B(); b.greet();", "Hello from A\nHello from B\n" },
 		{ "class A{ greet() { print \"Hello from A\"; } } class B < A{ greet() { super.greet(); print \"Hello from B\"; } } class C < A{greet() { super.greet(); print \"Hello from C\"; } } var b = B(); var c = C(); b.greet(); c.greet();", "Hello from A\nHello from B\nHello from A\nHello from C\n" },
+		// Root method calling
+		{ "class Base{ func() { print \"Base func\"; } } class Derived < Base{ func() { print \"Derived func\"; } } var d = Derived(); d..func();", "Base func\n" },
+		// inner() tests (chain-of-responsibility via RootGet)
+		//		1) base calls inner(), derived overrides -> expect Base then Derived
+		{ "class A{ m(s) { print \"A \" + s; inner(s); } } class B < A{ m(s) { print \"B \" + s; } } var b = B(); b..m(\"x\");", "A x\nB x\n" },
+		//		2) three-level chain: A -> B -> C, passing a string argument through inner(s)
+		{ "class A{ m(s) { print \"A \" + s; inner(s); } } class B < A{ m(s) { print \"B \" + s; inner(s); } } class C < B{ m(s) { print \"C \" + s; } } var c = C(); c..m(\"y\");", "A y\nB y\nC y\n" },
+		//		3) middle class doesn't implement m, lower level does -> expect Base then Lower with arg
+		{ "class A{ m(s) { print \"A \" + s; inner(s); } } class B < A{ } class C < B{ m(s) { print \"C \" + s; } } var c = C(); c..m(\"z\");", "A z\nC z\n" },
+		//		4) derived doesn't override, only base exists -> expect only Base with arg
+		{ "class A{ m(s) { print \"A \" + s; inner(s); } } class B < A{ } var b2 = B(); b2..m(\"w\");", "A w\n" },
 	};
 
 #ifdef _WIN32

@@ -111,6 +111,7 @@ bool Resolver::DoVisitVariableExpr(const Variable* expr)
 	{
 		Scope& currentScope = scopes.back();
 		auto it = currentScope.find(expr->name.lexeme);
+		// Variable is being accessed in its own initializer.
 		if (it != currentScope.end() && it->second == false)
 		{
 			Lox::GetInstance().SemanticError(expr->name.line, expr->name.column,
@@ -196,6 +197,12 @@ bool Resolver::DoVisitLambdaExpr(const Lambda* expr)
 }
 
 bool Resolver::DoVisitGetExpr(const Get* expr)
+{
+	Resolve(expr->object);
+	return true;
+}
+
+bool Resolver::DoVisitRootGetExpr(const RootGet* expr)
 {
 	Resolve(expr->object);
 	return true;
@@ -369,6 +376,8 @@ bool Resolver::DoVisitClassStat(const Class* stat)
 	scopes.push_back(Scope());
 	Scope& scope = scopes.back();
 	scope["this"] = true;
+	// also hold "inner" for root function calls
+	scope["inner"] = true;
 	for (const StatPtr& method : stat->methods)
 	{
 		Function* func = static_cast<Function*>(method.get());

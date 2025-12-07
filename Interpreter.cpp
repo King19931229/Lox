@@ -294,6 +294,18 @@ ValuePtr Interpreter::DoVisitGetExpr(const Get* expr)
 	return ErrorValue::Create("Unreachable code in DoVisitGetExpr.");
 }
 
+ValuePtr Interpreter::DoVisitRootGetExpr(const RootGet* expr)
+{
+	ValuePtr object = Evaluate(expr->object);
+	if (object->type != TYPE_INSTANCE)
+	{
+		Lox::GetInstance().RuntimeError(expr->name.line, expr->name.column, "Only instances have root functions.");
+		return ErrorValue::Create("Only instances root functions.");
+	}
+	LoxInstance* instance = static_cast<LoxInstance*>(object.get());
+	return instance->RootGet(this, expr->name);
+}
+
 ValuePtr Interpreter::DoVisitSetExpr(const Set* expr)
 {
 	ValuePtr object = Evaluate(expr->object);
@@ -405,11 +417,6 @@ void Interpreter::ExecuteBlock(const std::vector<StatPtr>& statements, Environme
 	environment = oldEnv;
 }
 
-ValuePtr LoxFunction::Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
-{
-	return interpreter->CallFunction(this, arguments);
-}
-
 ValuePtr Interpreter::CallFunction(const LoxFunction* function, const std::vector<ValuePtr>& arguments)
 {
 	EnvironmentPtr functionEnv = std::make_shared<Environment>(function->closure, true);
@@ -429,11 +436,6 @@ ValuePtr Interpreter::CallFunction(const LoxFunction* function, const std::vecto
 		returnValue = NilValue::Create();
 	}
 	return returnValue;
-}
-
-ValuePtr LoxLambda::Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
-{
-	return interpreter->CallLambda(this, arguments);
 }
 
 ValuePtr Interpreter::CallLambda(const LoxLambda* lambda, const std::vector<ValuePtr>& arguments)

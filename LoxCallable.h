@@ -33,6 +33,17 @@ struct LoxFunction : public LoxCallable
 	LoxFunction(const Function* inDeclaration, EnvironmentPtr inClosure, bool inIsInitializer);
 	static ValuePtr Create(const Function* declaration, EnvironmentPtr closure, bool isInitializer);
 	ValuePtr Bound(ValuePtr instance);
+	ValuePtr BoundInner(ValuePtr instance, ValuePtr derivedFunction);
+	int Arity() const override;
+	operator std::string() const override;
+	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
+};
+
+struct LoxNilFunction : public LoxCallable
+{
+	int arity;
+	LoxNilFunction(int inArity);
+	static ValuePtr Create(int arity);
 	int Arity() const override;
 	operator std::string() const override;
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
@@ -64,6 +75,7 @@ struct LoxClass : public LoxCallable
 	int Arity() const override;
 	operator std::string() const override;
 	ValuePtr FindMethod(const std::string& methodName) const;
+	ValuePtr FindOwnMethod(const std::string& methodName) const;
 	ValuePtr FindGetter(const std::string& getterName) const;
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
 	ValuePtr Get(const Token& name, size_t line = 0, size_t column = 0);
@@ -80,4 +92,5 @@ struct LoxInstance : public Value
 	operator std::string() const override;
 	ValuePtr Get(class Interpreter* interpreter, const Token& name, size_t line = 0, size_t column = 0);
 	void Set(const Token& name, ValuePtr value);
+	ValuePtr RootGet(class Interpreter* interpreter, const Token& name, size_t line = 0, size_t column = 0);
 };

@@ -16,6 +16,7 @@ struct Call;
 struct Lambda;
 struct Get;
 struct Set;
+struct RootGet;
 struct This;
 struct Super;
 struct Expr;
@@ -35,6 +36,7 @@ struct IExprVisitor
 	virtual void VisitLambdaExpr(const Lambda* Expr) = 0;
 	virtual void VisitGetExpr(const Get* Expr) = 0;
 	virtual void VisitSetExpr(const Set* Expr) = 0;
+	virtual void VisitRootGetExpr(const RootGet* Expr) = 0;
 	virtual void VisitThisExpr(const This* Expr) = 0;
 	virtual void VisitSuperExpr(const Super* Expr) = 0;
 };
@@ -58,6 +60,7 @@ struct ExprVisitor : public IExprVisitor
 	void VisitLambdaExpr(const Lambda* Expr) override { result = DoVisitLambdaExpr(Expr); }
 	void VisitGetExpr(const Get* Expr) override { result = DoVisitGetExpr(Expr); }
 	void VisitSetExpr(const Set* Expr) override { result = DoVisitSetExpr(Expr); }
+	void VisitRootGetExpr(const RootGet* Expr) override { result = DoVisitRootGetExpr(Expr); }
 	void VisitThisExpr(const This* Expr) override { result = DoVisitThisExpr(Expr); }
 	void VisitSuperExpr(const Super* Expr) override { result = DoVisitSuperExpr(Expr); }
 	
@@ -74,6 +77,7 @@ struct ExprVisitor : public IExprVisitor
 	virtual R DoVisitLambdaExpr(const Lambda* Expr) = 0;
 	virtual R DoVisitGetExpr(const Get* Expr) = 0;
 	virtual R DoVisitSetExpr(const Set* Expr) = 0;
+	virtual R DoVisitRootGetExpr(const RootGet* Expr) = 0;
 	virtual R DoVisitThisExpr(const This* Expr) = 0;
 	virtual R DoVisitSuperExpr(const Super* Expr) = 0;
 };
@@ -403,6 +407,30 @@ struct Set : public Expr
 	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitSetExpr(this);
+	}
+};
+struct RootGet;
+typedef std::shared_ptr<RootGet> RootGetPtr;
+
+struct RootGet : public Expr
+{
+	ExprPtr object;
+	Token name;
+	
+	RootGet(const ExprPtr& inObject, const Token& inName)
+	{
+		this->object = inObject;
+		this->name = inName;
+	}
+	
+	static RootGetPtr Create(const ExprPtr& inObject, const Token& inName)
+	{
+		return std::make_shared<RootGet>(inObject, inName);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitRootGetExpr(this);
 	}
 };
 struct This;

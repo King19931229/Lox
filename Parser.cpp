@@ -285,6 +285,11 @@ ExprPtr Parser::Call()
 			Token name = Consume(TokenType::IDENTIFIER, "Expect property name after '.'.");
 			expr = Get::Create(expr, name);
 		}
+		else if (Match(TokenType::DOTDOT))
+		{
+			Token name = Consume(TokenType::IDENTIFIER, "Expect property name after '..'.");
+			expr = RootGet::Create(expr, name);
+		}
 		else
 		{
 			break;

@@ -220,6 +220,11 @@ void Scanner::ScanToken()
 		case ',': AddToken(COMMA); break;
 		case '.':
 		{
+			if (Match('.'))
+			{
+				AddToken(DOTDOT);
+				break;
+			}
 			if (IsDigit(Peek()))
 			{
 				Number();
