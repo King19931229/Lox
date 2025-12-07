@@ -475,6 +475,12 @@ void TestUnit::RunClassInterpreterTest()
 		{ "class Math{ class add(a, b) { return a + b; } class addAndMultiply(x, y, z) { return Math.add(x, y) * z; } } print(Math.addAndMultiply(2, 3, 4));", "20\n" },
 		// Getters
 		{ "class Rectangle{ init(width, height) { this.width = width; this.height = height; } area { return this.width * this.height; } } var r = Rectangle(5, 10); print(r.area);", "50\n" },
+		// Inheritance
+		{ "class Animal{ speak() { print \"animal sound\"; } } class Cat < Animal {} var c = Cat(); c.speak();", "animal sound\n" },
+		{ "class Animal{ speak() { print \"animal sound\"; } } class Dog < Animal{ speak() { print \"woof\"; } } var d = Dog(); d.speak();", "woof\n" },
+		// Super
+		{ "class A{ greet() { print \"Hello from A\"; } } class B < A{ greet() { super.greet(); print \"Hello from B\"; } } var b = B(); b.greet();", "Hello from A\nHello from B\n" },
+		{ "class A{ greet() { print \"Hello from A\"; } } class B < A{ greet() { super.greet(); print \"Hello from B\"; } } class C < A{greet() { super.greet(); print \"Hello from C\"; } } var b = B(); var c = C(); b.greet(); c.greet();", "Hello from A\nHello from B\nHello from A\nHello from C\n" },
 	};
 
 #ifdef _WIN32
@@ -587,6 +593,8 @@ void TestUnit::RunResolverTest()
 		{ "class C { init() { return 1; } }", "[1:20] SemanticError: Cannot return a value from an initializer.\n" },
 		// Class static method use this
 		{ "class C { class Method() { this; } }", "[1:28] SemanticError: 'this' cannot be used in a class method.\n" },
+		// Class inherit from itself
+		{ "class C < C { }", "[1:7] SemanticError: Class cannot inherit from itself.\n" },
 	};
 
 #ifdef _WIN32

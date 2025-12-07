@@ -166,7 +166,10 @@ ValuePtr Interpreter::DoVisitUnaryExpr(const Unary* expr)
 
 	switch (expr->op.type)
 	{
-		case TokenType::BANG:  return !right;
+		case TokenType::BANG:
+		{
+			return BoolValue::Create(!Trueify(right));
+		}
 		case TokenType::MINUS: return -right;
 	}
 
@@ -246,20 +249,20 @@ ValuePtr Interpreter::DoVisitCallExpr(const Call* expr)
 		arguments.push_back(Evaluate(argumentExpr));
 	}
 
-	LoxCallable* function = dynamic_cast<LoxCallable*>(callee.get());
-	if (!function)
+	LoxCallable* callable = dynamic_cast<LoxCallable*>(callee.get());
+	if (!callable)
 	{
 		Lox::GetInstance().RuntimeError(expr->paren.line, expr->paren.column, "Can only call functions and classes.");
 		return ErrorValue::Create("Can only call functions and classes.");
 	}
 	else
 	{
-		if (arguments.size() != function->Arity())
+		if (arguments.size() != callable->Arity())
 		{
-			Lox::GetInstance().RuntimeError(expr->paren.line, expr->paren.column, "Argument count mismatch, expected %d but got %d.", function->Arity(), arguments.size());
+			Lox::GetInstance().RuntimeError(expr->paren.line, expr->paren.column, "Argument count mismatch, expected %d but got %d.", callable->Arity(), arguments.size());
 			return ErrorValue::Create("Argument count mismatch.");
 		}
-		return function->Call(this, arguments);
+		return callable->Call(this, arguments);
 	}
 }
 
@@ -320,6 +323,37 @@ ValuePtr Interpreter::DoVisitThisExpr(const This* expr)
 {
 	return LookUpVariable(expr->keyword, expr);
 }
+
+ValuePtr Interpreter::DoVisitSuperExpr(const Super* expr)
+{
+	if (!locals.count(expr))
+	{
+		Lox::GetInstance().RuntimeError("'%s' method is not resolved.", expr->method.lexeme.c_str());
+		return ErrorValue::Create("Method is not resolved.");
+	}
+	int distance = locals[expr];
+	ValuePtr superClassValue = environment->GetAt(distance, expr->keyword.lexeme, expr->keyword.line, expr->keyword.column);
+	LoxClass* superClass = superClassValue ? dynamic_cast<LoxClass*>(superClassValue.get()) : nullptr;
+	if (!superClass)
+	{
+		Lox::GetInstance().RuntimeError(expr->keyword.line, expr->keyword.column, "Super class must be a class type.");
+		return ErrorValue::Create("Super class must be a class type.");
+	}
+	ValuePtr methodValue = superClass->FindMethod(expr->method.lexeme);
+	LoxFunction* method = methodValue ? dynamic_cast<LoxFunction*>(methodValue.get()) : nullptr;
+	if (!method)
+	{
+		Lox::GetInstance().RuntimeError(expr->method.line, expr->method.column, "Method '%s' is not defined in super class.", expr->method.lexeme.c_str());
+		return ErrorValue::Create("Method is not defined in super class.");
+	}
+	ValuePtr object = environment->GetAt(distance - 1, "this", expr->keyword.line, expr->keyword.column);
+	if (object ->type != TYPE_INSTANCE)
+	{
+		Lox::GetInstance().RuntimeError(expr->keyword.line, expr->keyword.column, "'this' must be an instance.");
+		return ErrorValue::Create("'this' must be an instance.");
+	}
+	return method->Bound(object);
+};
 
 bool Interpreter::DoVisitExpressionStat(const Expression* stat)
 {
@@ -503,7 +537,30 @@ bool Interpreter::DoVisitClassStat(const Class* stat)
 {
 	ERROR_CONTROL_FAST_RETURN;
 	environment->Define(stat->name.lexeme, nullptr, stat->name.line, stat->name.column);
-	ValuePtr klass = LoxClass::Create(stat->name.lexeme);
+	ValuePtr superclassValue = nullptr;
+	if (stat->superclass)
+	{
+		superclassValue = Evaluate(stat->superclass);
+		LoxClass* superClass = dynamic_cast<LoxClass*>(superclassValue.get());
+		if (!superClass)
+		{
+			Lox::GetInstance().RuntimeError(
+				stat->name.line,
+				stat->name.column,
+				"Superclass must be a class.");
+			return true;
+		}
+	}
+
+	ValuePtr klass = LoxClass::Create(stat->name.lexeme, superclassValue);
+
+	// Create a new environment for methods to capture 'super' if there is a superclass
+	EnvironmentPtr classDefEnv = environment;
+	if (stat->superclass)
+	{
+		environment = std::make_shared<Environment>(classDefEnv);
+		environment->Define("super", superclassValue, stat->name.line, stat->name.column);
+	}
 
 	auto& methods = static_cast<LoxClass*>(klass.get())->methods;
 	for (StatPtr methodStat : stat->methods)
@@ -515,7 +572,6 @@ bool Interpreter::DoVisitClassStat(const Class* stat)
 			methods[methodFunction->name.lexeme] = function;
 		}
 	}
-
 	auto& getters = static_cast<LoxClass*>(klass.get())->getters;
 	for (StatPtr getterStat : stat->getters)
 	{
@@ -537,7 +593,15 @@ bool Interpreter::DoVisitClassStat(const Class* stat)
 			classMethods[classMethodFunction->name.lexeme] = function;
 		}
 	}
+
+	// Restore the previous environment
+	if (stat->superclass)
+	{
+		environment = classDefEnv;
+	}
+
 	environment->Assign(stat->name.lexeme, klass, stat->name.line, stat->name.column);
+
 	return true;
 }
 

@@ -85,15 +85,17 @@ LoxGetter::operator std::string() const
 	return "<getter " + declaration->name.lexeme + ">";
 }
 
-LoxClass::LoxClass(const std::string& inName)
+LoxClass::LoxClass(const std::string& inName, ValuePtr inSuperClass)
 	: name(inName)
+	, superClass(inSuperClass)
 {
 	this->type = TYPE_CLASS;
 }
 
-ValuePtr LoxClass::Create(const std::string& name)
+ValuePtr LoxClass::Create(const std::string& name, ValuePtr superClass)
 {
-	return std::make_shared<LoxClass>(name);
+	auto loxClass = std::make_shared<LoxClass>(name, superClass);
+	return loxClass	;
 }
 
 int LoxClass::Arity() const
@@ -118,6 +120,11 @@ ValuePtr LoxClass::FindMethod(const std::string& methodName) const
 	if (it != methods.end())
 	{
 		return it->second;
+	}
+	if (superClass)
+	{
+		LoxClass* superClassPtr = static_cast<LoxClass*>(superClass.get());
+		return superClassPtr->FindMethod(methodName);
 	}
 	return nullptr;
 }

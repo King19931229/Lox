@@ -32,6 +32,7 @@ int main(int argc, char* argv[])
 		"Get: Expr object, Token name",
 		"Set : Expr object, Token name, Expr value",
 		"This: Token keyword",
+		"Super: Token keyword, Token method",
 	});
 	generator.DefineAST("G:/Lox/", "Stat",
 	{
@@ -45,7 +46,7 @@ int main(int argc, char* argv[])
 		"Function : Token name, List<Token> params, List<Stat> body",
 		"Getter: Token name, List<Stat> body",
 		"Return: Token keyword, Expr value",
-		"Class: Token name, List<Stat> methods, List<Stat> getters, List<Stat> classMethods",
+		"Class: Token name, Expr superclass, List<Stat> methods, List<Stat> getters, List<Stat> classMethods",
 	});
 
 	return 0;

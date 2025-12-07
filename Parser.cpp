@@ -310,11 +310,19 @@ ExprPtr Parser::Primary()
 		return This::Create(Previous());
 	}
 
+	if (Match(TokenType::SUPER))
+	{
+		Token keyword = Previous();
+		Consume(TokenType::DOT, "Expect '.' after 'super'.");
+		Token method = Consume(TokenType::IDENTIFIER, "Expect superclass method name.");
+		return Super::Create(keyword, method);
+	}
+
 	if (Match(TokenType::LEFT_PAREN))
 	{
 		ExprPtr expr = Expression();
 		Consume(TokenType::RIGHT_PAREN, "Expect ')' after expression.");
-		return expr; // Should wrap in Grouping, omitted for brevity
+		return expr;
 	}
 
 	if (Match(TokenType::IDENTIFIER))
@@ -473,6 +481,11 @@ StatPtr Parser::FunDeclaration(const std::string& kind)
 StatPtr Parser::ClassDeclaration()
 {
 	Token name = Consume(TokenType::IDENTIFIER, "Expect class name.");
+	ExprPtr superclass = nullptr;
+	if (Match(TokenType::LESS))
+	{
+		superclass = Variable::Create(Consume(TokenType::IDENTIFIER, "Expect superclass name."));
+	}
 	Consume(TokenType::LEFT_BRACE, "Expect '{' before class body.");
 	std::vector<StatPtr> methods;
 	std::vector<StatPtr> getters;
@@ -497,7 +510,7 @@ StatPtr Parser::ClassDeclaration()
 		}
 	}
 	Consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.");
-	return Class::Create(name, methods, getters, classMethods);
+	return Class::Create(name, superclass, methods, getters, classMethods);
 }
 
 StatPtr Parser::PrintStatement()

@@ -224,6 +224,22 @@ bool Resolver::DoVisitThisExpr(const This* expr)
 	return true;
 }
 
+bool Resolver::DoVisitSuperExpr(const Super* expr)
+{
+	if (currentClassType == ClassType::NONE)
+	{
+		Lox::GetInstance().SemanticError(expr->keyword.line, expr->keyword.column,
+			"'super' cannot be used outside of a class.");
+	}
+	if (currentClassType != ClassType::SUBCLASS)
+	{
+		Lox::GetInstance().SemanticError(expr->keyword.line, expr->keyword.column,
+			"'super' cannot be used in a class with no superclass.");
+	}
+	ResolveLocal(expr, expr->keyword);
+	return true;
+}
+
 bool Resolver::DoVisitBlockStat(const Block* stat)
 {
 	BeginScope();
@@ -324,6 +340,31 @@ bool Resolver::DoVisitClassStat(const Class* stat)
 	currentClassType = ClassType::CLASS;
 	Declare(stat->name);
 	Define(stat->name);
+	// Resolve superclass if any
+	if (stat->superclass)
+	{
+		currentClassType = ClassType::SUBCLASS;
+		ExprPtr superClass = stat->superclass;
+		Variable* var = dynamic_cast<Variable*>(superClass.get());
+		if (!var)
+		{
+			Lox::GetInstance().SemanticError(stat->name.line, stat->name.column,
+				"Superclass must be a variable identifier.");
+		}
+		if (var->name.lexeme == stat->name.lexeme)
+		{
+			Lox::GetInstance().SemanticError(stat->name.line, stat->name.column,
+				"Class cannot inherit from itself.");
+		}
+		Resolve(superClass);
+	}
+	// Create a scope for superclass "super" if any
+	if (stat->superclass)
+	{
+		BeginScope();
+		Scope& scope = scopes.back();
+		scope["super"] = true;
+	}
 	// Create a scope out of the method scopes to hold "this"
 	scopes.push_back(Scope());
 	Scope& scope = scopes.back();
@@ -349,6 +390,10 @@ bool Resolver::DoVisitClassStat(const Class* stat)
 		ResolveFunction(method.get(), FunctionType::CLASS);
 	}
 	scopes.pop_back();
+	if (stat->superclass)
+	{
+		scopes.pop_back();
+	}
 	currentClassType = enclosingClass;
 	return true;
 }

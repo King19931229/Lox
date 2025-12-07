@@ -144,12 +144,6 @@ inline ValuePtr operator-(const ValuePtr& val)
 	return ErrorValue::Create("Operand must be a number for unary minus.");
 }
 
-inline ValuePtr operator!(const ValuePtr& val)
-{
-	if (val->type == TYPE_ERROR) return val;
-	return BoolValue::Create(!static_cast<bool>(*val));
-}
-
 #define DEFINE_ARITHMETIC_OPERATOR(op, op_name) \
 inline ValuePtr operator op(const ValuePtr& left, const ValuePtr& right) \
 { \

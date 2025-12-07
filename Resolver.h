@@ -32,7 +32,8 @@ protected:
 	enum class ClassType
 	{
 		NONE,
-		CLASS
+		CLASS,
+		SUBCLASS
 	};
 	ClassType currentClassType = ClassType::NONE;
 
@@ -68,6 +69,7 @@ public:
 	virtual bool DoVisitGetExpr(const Get* expr) override;
 	virtual bool DoVisitSetExpr(const Set* expr) override;
 	virtual bool DoVisitThisExpr(const This* expr) override;
+	virtual bool DoVisitSuperExpr(const Super* expr) override;
 
 	virtual bool DoVisitExpressionStat(const Expression* stat) override;
 	virtual bool DoVisitPrintStat(const Print* stat) override;

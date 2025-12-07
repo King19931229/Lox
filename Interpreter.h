@@ -60,6 +60,7 @@ protected:
 	virtual ValuePtr DoVisitGetExpr(const Get* expr) override;
 	virtual ValuePtr DoVisitSetExpr(const Set* expr) override;
 	virtual ValuePtr DoVisitThisExpr(const This* expr) override;
+	virtual ValuePtr DoVisitSuperExpr(const Super* expr) override;
 
 	virtual bool DoVisitExpressionStat(const Expression* stat) override;
 	virtual bool DoVisitPrintStat(const Print* stat) override;

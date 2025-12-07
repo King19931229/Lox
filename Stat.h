@@ -335,21 +335,23 @@ typedef std::shared_ptr<Class> ClassPtr;
 struct Class : public Stat
 {
 	Token name;
+	ExprPtr superclass;
 	std::vector<StatPtr> methods;
 	std::vector<StatPtr> getters;
 	std::vector<StatPtr> classMethods;
 	
-	Class(const Token& inName, const std::vector<StatPtr>& inMethods, const std::vector<StatPtr>& inGetters, const std::vector<StatPtr>& inClassMethods)
+	Class(const Token& inName, const ExprPtr& inSuperclass, const std::vector<StatPtr>& inMethods, const std::vector<StatPtr>& inGetters, const std::vector<StatPtr>& inClassMethods)
 	{
 		this->name = inName;
+		this->superclass = inSuperclass;
 		this->methods = inMethods;
 		this->getters = inGetters;
 		this->classMethods = inClassMethods;
 	}
 	
-	static ClassPtr Create(const Token& inName, const std::vector<StatPtr>& inMethods, const std::vector<StatPtr>& inGetters, const std::vector<StatPtr>& inClassMethods)
+	static ClassPtr Create(const Token& inName, const ExprPtr& inSuperclass, const std::vector<StatPtr>& inMethods, const std::vector<StatPtr>& inGetters, const std::vector<StatPtr>& inClassMethods)
 	{
-		return std::make_shared<Class>(inName, inMethods, inGetters, inClassMethods);
+		return std::make_shared<Class>(inName, inSuperclass, inMethods, inGetters, inClassMethods);
 	}
 	
 	void Accept(IStatVisitor& visitor) const override

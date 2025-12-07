@@ -57,9 +57,10 @@ struct LoxClass : public LoxCallable
 	std::unordered_map<std::string, ValuePtr> methods;
 	std::unordered_map<std::string, ValuePtr> getters;
 	std::unordered_map<std::string, ValuePtr> classMethods;
+	ValuePtr superClass;
 
-	LoxClass(const std::string& inName);
-	static ValuePtr Create(const std::string& name);
+	LoxClass(const std::string& inName, ValuePtr inSuperClass);
+	static ValuePtr Create(const std::string& name, ValuePtr superClass);
 	int Arity() const override;
 	operator std::string() const override;
 	ValuePtr FindMethod(const std::string& methodName) const;

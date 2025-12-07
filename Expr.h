@@ -17,6 +17,7 @@ struct Lambda;
 struct Get;
 struct Set;
 struct This;
+struct Super;
 struct Expr;
 
 struct IExprVisitor
@@ -35,6 +36,7 @@ struct IExprVisitor
 	virtual void VisitGetExpr(const Get* Expr) = 0;
 	virtual void VisitSetExpr(const Set* Expr) = 0;
 	virtual void VisitThisExpr(const This* Expr) = 0;
+	virtual void VisitSuperExpr(const Super* Expr) = 0;
 };
 
 template<typename R>
@@ -57,6 +59,7 @@ struct ExprVisitor : public IExprVisitor
 	void VisitGetExpr(const Get* Expr) override { result = DoVisitGetExpr(Expr); }
 	void VisitSetExpr(const Set* Expr) override { result = DoVisitSetExpr(Expr); }
 	void VisitThisExpr(const This* Expr) override { result = DoVisitThisExpr(Expr); }
+	void VisitSuperExpr(const Super* Expr) override { result = DoVisitSuperExpr(Expr); }
 	
 	protected:
 	virtual R DoVisitTernaryExpr(const Ternary* Expr) = 0;
@@ -72,6 +75,7 @@ struct ExprVisitor : public IExprVisitor
 	virtual R DoVisitGetExpr(const Get* Expr) = 0;
 	virtual R DoVisitSetExpr(const Set* Expr) = 0;
 	virtual R DoVisitThisExpr(const This* Expr) = 0;
+	virtual R DoVisitSuperExpr(const Super* Expr) = 0;
 };
 
 
@@ -421,5 +425,29 @@ struct This : public Expr
 	void Accept(IExprVisitor& visitor) const override
 	{
 		visitor.VisitThisExpr(this);
+	}
+};
+struct Super;
+typedef std::shared_ptr<Super> SuperPtr;
+
+struct Super : public Expr
+{
+	Token keyword;
+	Token method;
+	
+	Super(const Token& inKeyword, const Token& inMethod)
+	{
+		this->keyword = inKeyword;
+		this->method = inMethod;
+	}
+	
+	static SuperPtr Create(const Token& inKeyword, const Token& inMethod)
+	{
+		return std::make_shared<Super>(inKeyword, inMethod);
+	}
+	
+	void Accept(IExprVisitor& visitor) const override
+	{
+		visitor.VisitSuperExpr(this);
 	}
 };
