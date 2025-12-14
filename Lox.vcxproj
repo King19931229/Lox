@@ -139,6 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Chunk.cpp" />
     <ClCompile Include="GenerateAST.cpp" />
     <ClCompile Include="Interpreter.cpp" />
     <ClCompile Include="Lox.cpp" />
@@ -152,8 +153,10 @@
     <ClCompile Include="Scanner.cpp" />
     <ClCompile Include="TestUnit.cpp" />
     <ClCompile Include="TokenType.h" />
+    <ClCompile Include="VM.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Chunk.h" />
     <ClInclude Include="Environment.h" />
     <ClInclude Include="Expr.h" />
     <ClInclude Include="Expr.template.h" />
@@ -170,6 +173,7 @@
     <ClInclude Include="TestUnit.h" />
     <ClInclude Include="Util.h" />
     <ClInclude Include="Value.h" />
+    <ClInclude Include="VM.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -4,19 +4,24 @@
 #include "TestUnit.h"
 #include "GenerateAST.h"
 #include "Interpreter.h"
+#include "Chunk.h"
+#include "VM.h"
 
-int main(int argc, char* argv[])
+int LegacyMain(int argc, char* argv[])
 {
+	/*
 	TestUnit::RunExpressionInterpreterTest();
 	TestUnit::RunResolverTest();
 	TestUnit::RunStatementInterpreterTest();
 	TestUnit::RunFunctionInterpreterTest();
 	TestUnit::RunClassInterpreterTest();
-	//Lox& lox = Lox::GetInstance();
-	//lox.Run(0, nullptr);
-	//lox.Run(argc - 1, argc > 1 ? &argv[1] : nullptr);
+	*/
 
-	GenerateAST generator;
+	Lox& lox = Lox::GetInstance();
+	lox.Run(0, nullptr);
+	lox.Run(argc - 1, argc > 1 ? &argv[1] : nullptr);
+
+	/*GenerateAST generator;
 	generator.DefineAST("G:/Lox/", "Expr",
 	{
 		"Ternary : Expr left, Token opLeft, Expr middle, Token opRight, Expr right",
@@ -48,7 +53,22 @@ int main(int argc, char* argv[])
 		"Getter: Token name, List<Stat> body",
 		"Return: Token keyword, Expr value",
 		"Class: Token name, Expr superclass, List<Stat> methods, List<Stat> getters, List<Stat> classMethods",
-	});
+	});*/
 
 	return 0;
+}
+
+int main(int argc, char* argv[])
+{
+	Chunk chunk;
+	VM vm;
+	vm.Init();
+	chunk.Init();
+	for (int32_t i = 0; i < 300; ++i)
+	{
+		chunk.WriteConstant(i * 100, i % 30 + 1, i % 20 + 1);
+	}
+	chunk.Disassemble("test chunk");
+	chunk.Free();
+	vm.Free();
 }
