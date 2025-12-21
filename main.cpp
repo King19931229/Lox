@@ -60,15 +60,197 @@ int LegacyMain(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-	Chunk chunk;
 	VM vm;
-	vm.Init();
-	chunk.Init();
-	for (int32_t i = 0; i < 300; ++i)
+	
+	// 1 * 2 + 3
 	{
-		chunk.WriteConstant(i * 100, i % 30 + 1, i % 20 + 1);
+		Chunk chunk;
+		vm.Init();
+		chunk.Init();
+
+		uint32_t line = 1;
+		uint32_t column = 1;
+
+		uint32_t index = chunk.AddCounstant(1);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(2);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_MULTIPLY, line, column);
+
+		index = chunk.AddCounstant(3);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_ADD, line, column);
+
+		chunk.Write(OP_RETURN, line, column);
+		vm.Interpret(&chunk);
+		chunk.Free();
 	}
-	chunk.Disassemble("test chunk");
-	chunk.Free();
+	// 1 + 2 * 3
+	{
+		Chunk chunk;
+		vm.Init();
+		chunk.Init();
+
+		uint32_t line = 1;
+		uint32_t column = 1;
+
+		uint32_t index = chunk.AddCounstant(1);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(2);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(3);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_MULTIPLY, line, column);
+		chunk.Write(OP_ADD, line, column);
+
+		chunk.Write(OP_RETURN, line, column);
+		vm.Interpret(&chunk);
+		chunk.Free();
+	}
+	// 3 - 2 - 1
+	{
+		Chunk chunk;
+		vm.Init();
+		chunk.Init();
+
+		uint32_t line = 1;
+		uint32_t column = 1;
+
+		uint32_t index = chunk.AddCounstant(3);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(2);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_SUBTRACT, line, column);
+
+		index = chunk.AddCounstant(1);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_SUBTRACT, line, column);
+
+		chunk.Write(OP_RETURN, line, column);
+		vm.Interpret(&chunk);
+		chunk.Free();
+	}
+	// (1 + 2 * 3) - (4 / -5)
+	{
+		Chunk chunk;
+		vm.Init();
+		chunk.Init();
+
+		uint32_t line = 1;
+		uint32_t column = 1;
+
+		uint32_t index = chunk.AddCounstant(1);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(2);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(3);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_MULTIPLY, line, column);
+		chunk.Write(OP_ADD, line, column);
+
+		index = chunk.AddCounstant(4);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(5);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_NEGATE, line, column);
+		chunk.Write(OP_DIVIDE, line, column);
+
+		chunk.Write(OP_SUBTRACT, line, column);
+
+		chunk.Write(OP_RETURN, line, column);
+		vm.Interpret(&chunk);
+		chunk.Free();
+	}
+	// 4 - 3 * -2 (alternative)
+	{
+		Chunk chunk;
+		vm.Init();
+		chunk.Init();
+
+		uint32_t line = 1;
+		uint32_t column = 1;
+
+		uint32_t index = chunk.AddCounstant(4);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(3);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(0);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(2);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_SUBTRACT, line, column);
+		chunk.Write(OP_MULTIPLY, line, column);
+		chunk.Write(OP_SUBTRACT, line, column);
+
+		chunk.Write(OP_RETURN, line, column);
+		vm.Interpret(&chunk);
+		chunk.Free();
+	}
+	// 4 - 3 * -2
+	{
+		Chunk chunk;
+		vm.Init();
+		chunk.Init();
+
+		uint32_t line = 1;
+		uint32_t column = 1;
+
+		uint32_t index = chunk.AddCounstant(4);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(3);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		index = chunk.AddCounstant(2);
+		chunk.Write(OP_CONSTANT, line, column);
+		chunk.Write(index, line, column);
+
+		chunk.Write(OP_NEGATE, line, column);
+		chunk.Write(OP_MULTIPLY, line, column);
+		chunk.Write(OP_SUBTRACT, line, column);
+
+		chunk.Write(OP_RETURN, line, column);
+		vm.Interpret(&chunk);
+		chunk.Free();
+	}
+
 	vm.Free();
 }
