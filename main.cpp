@@ -58,10 +58,10 @@ int LegacyMain(int argc, char* argv[])
 	return 0;
 }
 
-int main(int argc, char* argv[])
+void TestChunk()
 {
 	VM vm;
-	
+
 	// 1 * 2 + 3
 	{
 		Chunk chunk;
@@ -254,3 +254,12 @@ int main(int argc, char* argv[])
 
 	vm.Free();
 }
+
+int main(int argc, char* argv[])
+{
+	VM vm;
+	vm.Init();
+    vm.Interpret("1+2/3");
+	vm.Free();
+	return 0;
+}	

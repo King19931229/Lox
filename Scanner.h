@@ -9,10 +9,11 @@ class Scanner
 {
 public:
 	explicit Scanner(const std::string& inSource);
-	std::vector<Token> tokens;
 	std::vector<Token> ScanTokens();
-	static std::unordered_map<std::string, TokenType> keywords;
+	void Print();
 protected:
+	std::vector<Token> tokens;
+	static std::unordered_map<std::string, TokenType> keywords;
 	std::string source;
 	size_t start = 0;
 	size_t current = 0;

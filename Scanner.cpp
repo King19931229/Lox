@@ -45,6 +45,25 @@ std::vector<Token> Scanner::ScanTokens()
 	return tokens;
 }
 
+void Scanner::Print()
+{
+	size_t line = -1;
+	for (const Token& token : tokens)
+	{
+		if (token.line != line)
+		{
+			// print line:column when a new line is encountered
+			printf("%4zu:%-3zu %-12s %s\n", token.line, token.column, TokenTypeName[token.type], token.lexeme.c_str());
+		}
+		else
+		{
+			// same line: align under the previous line and print column
+			printf("   | %-3zu %-12s %s\n", token.column, TokenTypeName[token.type], token.lexeme.c_str());
+		}
+		line = token.line;
+	}
+}
+
 bool Scanner::IsAtEnd()
 {
 	return current >= source.size();

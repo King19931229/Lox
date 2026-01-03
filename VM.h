@@ -8,8 +8,9 @@ enum InterpretResult
 	INTERPRET_RUNTIME_ERROR
 };
 
-struct VM
+class VM
 {
+protected:
 	static constexpr uint32_t STACK_MAX = 256;
 	Chunk* chunk = nullptr;
 	uint8_t* ip = nullptr;
@@ -24,6 +25,7 @@ struct VM
 	void Negate();
 	VMValue Pop();
 
+public:
 	// VM lifecycle
 	void Init();
 	void Free();
@@ -31,4 +33,8 @@ struct VM
 	// Execution
 	InterpretResult Run();
 	InterpretResult Interpret(Chunk* chunk);
+	InterpretResult Interpret(const char* source);
+
+	void Repl();
+	void RunFile(const char* path);
 };
