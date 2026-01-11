@@ -63,7 +63,7 @@ int32_t Chunk::GetColumn(int32_t offset)
 	return columns[offset];
 }
 
-int32_t Chunk::AddCounstant(VMValue value)
+int32_t Chunk::AddConstant(VMValue value)
 {
 	constants.Write(value);
 	return constants.count - 1;
@@ -159,13 +159,13 @@ void Chunk::WriteConstant(VMValue value, int32_t line, int32_t column)
 	if (constants.count <= 255)
 	{
 		Write(OP_CONSTANT, line, column);
-		int32_t index = AddCounstant(value);
+		int32_t index = AddConstant(value);
 		Write(index, line, column);
 	}
 	else
 	{
 		Write(OP_CONSTANT_LONG, line, column);
-		int32_t index = AddCounstant(value);
+		int32_t index = AddConstant(value);
 		Write((index >> 16) & 0xFF, line, column);
 		Write((index >> 8) & 0xFF, line, column);
 		Write(index & 0xFF, line, column);

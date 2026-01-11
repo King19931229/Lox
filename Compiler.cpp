@@ -1,5 +1,7 @@
 #include "Compiler.h"
 
+#define DEBUG_PRINT_CODE
+
 bool Compiler::Compile(const char* source, Chunk* outChunk)
 {
 	Scanner scanner(source);
@@ -8,9 +10,13 @@ bool Compiler::Compile(const char* source, Chunk* outChunk)
 	{
 		return false;
 	}
+	compilingChunk = outChunk;
+	// Initialize parser state, move the lookahead to the first token.
 	Advance();
+	Expression();
 	Consume(END_OF_FILE, "Expect end of expression.");
-	return true;
+	EndCompiler();
+	return !parser.hadError;
 }
 
 void Compiler::Advance()
@@ -30,30 +36,6 @@ void Compiler::Advance()
 void Compiler::Error(const char* message)
 {
 	ErrorAt(&parser.previous, message);
-}
-
-Token Compiler::ScanToken()
-{
-	if (currentToken >= tokens.size())
-	{
-		return Token(ERROR, "", 0, 0);
-	}
-	return tokens[currentToken++];
-}
-
-void Compiler::Consume(TokenType type, const char* message)
-{
-	if (parser.current.type == type)
-	{
-		Advance();
-		return;
-	}
-	ErrorAt(&parser.current, message);
-}
-
-void Compiler::ErrorAtCurrent(const char* message)
-{
-	ErrorAt(&parser.current, message);
 }
 
 void Compiler::ErrorAt(Token* token, const char* message)
@@ -78,4 +60,240 @@ void Compiler::ErrorAt(Token* token, const char* message)
 	}
 	fprintf(stderr, ": %s\n", message);
 	parser.hadError = true;
+}
+
+Compiler::ParseRule* Compiler::GetRule(TokenType type)
+{
+	// Use a lazily-initialized static vector and assign entries by index.
+	// This emulates designated initializers in a C++14-compliant way and
+	// is robust against changes in enum ordering as long as token names
+	// remain consistent.
+	static std::vector<ParseRule> rules;
+	if (rules.empty())
+	{
+		rules.resize((size_t)ERROR + 1);
+
+		rules[LEFT_PAREN]    = { &Compiler::Grouping, nullptr,           PREC_NONE };
+		rules[RIGHT_PAREN]   = { nullptr,             nullptr,           PREC_NONE };
+		rules[LEFT_BRACE]    = { nullptr,             nullptr,           PREC_NONE };
+		rules[RIGHT_BRACE]   = { nullptr,             nullptr,           PREC_NONE };
+		rules[COMMA]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[DOT]           = { nullptr,             nullptr,           PREC_NONE };
+		rules[DOTDOT]        = { nullptr,             nullptr,           PREC_NONE };
+		rules[MINUS]         = { &Compiler::Unary,    &Compiler::Binary, PREC_TERM };
+		rules[PLUS]          = { nullptr,             &Compiler::Binary, PREC_TERM };
+		rules[SEMICOLON]     = { nullptr,             nullptr,           PREC_NONE };
+		rules[SLASH]         = { nullptr,             &Compiler::Binary, PREC_FACTOR };
+		rules[STAR]          = { nullptr,             &Compiler::Binary, PREC_FACTOR };
+		rules[BANG]          = { nullptr,             nullptr,           PREC_NONE };
+        rules[QUESTION]      = { nullptr,             &Compiler::Trinary,PREC_QUESTION };
+		rules[COLON]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[BANG_EQUAL]    = { nullptr,             nullptr,           PREC_NONE };
+		rules[EQUAL]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[EQUAL_EQUAL]   = { nullptr,             nullptr,           PREC_NONE };
+		rules[GREATER]       = { nullptr,             nullptr,           PREC_NONE };
+		rules[GREATER_EQUAL] = { nullptr,             nullptr,           PREC_NONE };
+		rules[LESS]          = { nullptr,             nullptr,           PREC_NONE };
+		rules[LESS_EQUAL]    = { nullptr,             nullptr,           PREC_NONE };
+		rules[IDENTIFIER]    = { nullptr,             nullptr,           PREC_NONE };
+		rules[STRING]        = { nullptr,             nullptr,           PREC_NONE };
+		rules[NUMBER]        = { &Compiler::Number,   nullptr,           PREC_NONE };
+		rules[AND]           = { nullptr,             nullptr,           PREC_NONE };
+		rules[CLASS]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[ELSE]          = { nullptr,             nullptr,           PREC_NONE };
+		rules[FALSE]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[FUN]           = { nullptr,             nullptr,           PREC_NONE };
+		rules[FOR]           = { nullptr,             nullptr,           PREC_NONE };
+		rules[IF]            = { nullptr,             nullptr,           PREC_NONE };
+		rules[NIL]           = { nullptr,             nullptr,           PREC_NONE };
+		rules[OR]            = { nullptr,             nullptr,           PREC_NONE };
+		rules[PRINT]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[RETURN]        = { nullptr,             nullptr,           PREC_NONE };
+		rules[SUPER]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[THIS]          = { nullptr,             nullptr,           PREC_NONE };
+		rules[TRUE]          = { nullptr,             nullptr,           PREC_NONE };
+		rules[VAR]           = { nullptr,             nullptr,           PREC_NONE };
+		rules[WHILE]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[BREAK]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[END_OF_FILE]   = { nullptr,             nullptr,           PREC_NONE };
+		rules[ERROR]         = { nullptr,             nullptr,           PREC_NONE };
+	}
+
+	return &rules[type];
+}
+
+
+Token Compiler::ScanToken()
+{
+	if (currentToken >= tokens.size())
+	{
+		return Token(ERROR, "", 0, 0);
+	}
+	return tokens[currentToken++];
+}
+
+void Compiler::Consume(TokenType type, const char* message)
+{
+	if (parser.current.type == type)
+	{
+		if (parser.current.type != END_OF_FILE)
+		{
+			Advance();
+		}
+		return;
+	}
+	ErrorAt(&parser.current, message);
+}
+
+void Compiler::ErrorAtCurrent(const char* message)
+{
+	ErrorAt(&parser.current, message);
+}
+
+void Compiler::EmitByte(uint8_t byte)
+{
+	compilingChunk->Write(byte, (int32_t)parser.previous.line, (int32_t)parser.previous.column);
+}
+
+void Compiler::EmitConstant(VMValue value)
+{
+	int32_t constantIndex = compilingChunk->AddConstant(value);
+	if (constantIndex <= 0xFF)
+	{
+		EmitBytes(OP_CONSTANT, (uint8_t)constantIndex);
+	}
+	else if (constantIndex <= 0xFFFFFF)
+	{
+		EmitBytes(OP_CONSTANT_LONG,
+			(uint8_t)((constantIndex >> 16) & 0xFF),
+			(uint8_t)((constantIndex >> 8) & 0xFF),
+			(uint8_t)(constantIndex & 0xFF));
+	}
+	else
+	{
+		Error("Too many constants in one chunk.");
+	}
+}
+
+void Compiler::EndCompiler()
+{
+	EmitByte(OP_RETURN);
+#ifdef DEBUG_PRINT_CODE	
+	if (!parser.hadError)
+	{
+		compilingChunk->Disassemble("code");
+	}
+#endif // DEBUG_PRINT_CODE
+}
+
+void Compiler::Expression()
+{
+	ParsePrecedence(PREC_ASSIGNMENT);
+}
+
+void Compiler::ParsePrecedence(Precedence precedence)
+{
+	Advance();
+
+	ParseFn prefixRule = GetRule(parser.previous.type)->prefix;
+	if (prefixRule == nullptr)
+	{
+		Error("Expect expression.");
+		return;
+	}
+
+	// Call the prefix parse function as a member function pointer.
+	(this->*prefixRule)();
+
+	while (precedence <= GetRule(parser.current.type)->precedence)
+	{
+		Advance();
+		ParseFn infixRule = GetRule(parser.previous.type)->infix;
+		// Call the infix parse function as a member function pointer.
+		(this->*infixRule)();
+	}
+}
+
+void Compiler::Number()
+{
+	const std::string& lexeme = parser.previous.lexeme;
+	char* endPtr = nullptr;
+	errno = 0;
+	double parsed = strtod(lexeme.c_str(), &endPtr);
+
+	// No characters were consumed -> invalid numeric literal.
+	if (endPtr == lexeme.c_str())
+	{
+		Error("Invalid numeric literal.");
+		return;
+	}
+
+	// Range error occurred during conversion.
+	if (errno == ERANGE)
+	{
+		Error("Numeric literal out of range.");
+		return;
+	}
+
+	VMValue value = parsed;
+	EmitConstant(value);
+}
+
+void Compiler::Grouping()
+{
+	Expression();
+	Consume(RIGHT_PAREN, "Expect ')' after expression.");
+}
+
+void Compiler::Unary()
+{
+	TokenType operatorType = parser.previous.type;
+	ParsePrecedence(PREC_UNARY);
+	switch (operatorType)
+	{
+		case MINUS:
+			EmitByte(OP_NEGATE);
+			break;
+		default:
+			Error("Unknown unary operator.");
+			break;
+	}
+}
+
+void Compiler::Binary()
+{
+	TokenType operatorType = parser.previous.type;
+
+	ParseRule* rule = GetRule(operatorType);
+	ParsePrecedence((Precedence)(rule->precedence + 1));
+
+	switch (operatorType)
+	{
+		case PLUS:          EmitByte(OP_ADD);       break;
+		case MINUS:         EmitByte(OP_SUBTRACT);  break;
+		case STAR:          EmitByte(OP_MULTIPLY);  break;
+		case SLASH:         EmitByte(OP_DIVIDE);    break;
+		default:
+			// Unreachable.
+			break;
+	}
+}
+
+void Compiler::Trinary()
+{
+	TokenType operatorType = parser.previous.type;
+
+	ParseRule* rule = GetRule(operatorType);
+	ParsePrecedence((Precedence)(rule->precedence));
+
+	switch (operatorType)
+	{
+		case QUESTION: break;
+		default:
+			// Unreachable.
+			break;
+	}
+
+	Consume(COLON, "Expect ':' in trinary operator.");
+	ParsePrecedence((Precedence)(rule->precedence));
 }

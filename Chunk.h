@@ -62,7 +62,7 @@ struct Chunk
 	int32_t GetLine(int32_t offset);
 	int32_t GetColumn(int32_t offset);
 
-	int32_t AddCounstant(VMValue value);
+	int32_t AddConstant(VMValue value);
 	void Free();
 
 	int32_t SimpleInstruction(const char* name, int32_t offset);

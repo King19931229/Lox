@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string>
 
-#define DEBUG_TRACE_EXECUTION
+// #define DEBUG_TRACE_EXECUTION
 
 void VM::ResetStack()
 {
