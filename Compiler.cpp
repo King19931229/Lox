@@ -73,50 +73,50 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 	{
 		rules.resize((size_t)ERROR + 1);
 
-		rules[LEFT_PAREN]    = { &Compiler::Grouping, nullptr,           PREC_NONE };
-		rules[RIGHT_PAREN]   = { nullptr,             nullptr,           PREC_NONE };
-		rules[LEFT_BRACE]    = { nullptr,             nullptr,           PREC_NONE };
-		rules[RIGHT_BRACE]   = { nullptr,             nullptr,           PREC_NONE };
-		rules[COMMA]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[DOT]           = { nullptr,             nullptr,           PREC_NONE };
-		rules[DOTDOT]        = { nullptr,             nullptr,           PREC_NONE };
-		rules[MINUS]         = { &Compiler::Unary,    &Compiler::Binary, PREC_TERM };
-		rules[PLUS]          = { nullptr,             &Compiler::Binary, PREC_TERM };
-		rules[SEMICOLON]     = { nullptr,             nullptr,           PREC_NONE };
-		rules[SLASH]         = { nullptr,             &Compiler::Binary, PREC_FACTOR };
-		rules[STAR]          = { nullptr,             &Compiler::Binary, PREC_FACTOR };
-		rules[BANG]          = { nullptr,             nullptr,           PREC_NONE };
-        rules[QUESTION]      = { nullptr,             &Compiler::Trinary,PREC_QUESTION };
-		rules[COLON]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[BANG_EQUAL]    = { nullptr,             nullptr,           PREC_NONE };
-		rules[EQUAL]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[EQUAL_EQUAL]   = { nullptr,             nullptr,           PREC_NONE };
-		rules[GREATER]       = { nullptr,             nullptr,           PREC_NONE };
-		rules[GREATER_EQUAL] = { nullptr,             nullptr,           PREC_NONE };
-		rules[LESS]          = { nullptr,             nullptr,           PREC_NONE };
-		rules[LESS_EQUAL]    = { nullptr,             nullptr,           PREC_NONE };
-		rules[IDENTIFIER]    = { nullptr,             nullptr,           PREC_NONE };
-		rules[STRING]        = { nullptr,             nullptr,           PREC_NONE };
-		rules[NUMBER]        = { &Compiler::Number,   nullptr,           PREC_NONE };
-		rules[AND]           = { nullptr,             nullptr,           PREC_NONE };
-		rules[CLASS]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[ELSE]          = { nullptr,             nullptr,           PREC_NONE };
-		rules[FALSE]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[FUN]           = { nullptr,             nullptr,           PREC_NONE };
-		rules[FOR]           = { nullptr,             nullptr,           PREC_NONE };
-		rules[IF]            = { nullptr,             nullptr,           PREC_NONE };
-		rules[NIL]           = { nullptr,             nullptr,           PREC_NONE };
-		rules[OR]            = { nullptr,             nullptr,           PREC_NONE };
-		rules[PRINT]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[RETURN]        = { nullptr,             nullptr,           PREC_NONE };
-		rules[SUPER]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[THIS]          = { nullptr,             nullptr,           PREC_NONE };
-		rules[TRUE]          = { nullptr,             nullptr,           PREC_NONE };
-		rules[VAR]           = { nullptr,             nullptr,           PREC_NONE };
-		rules[WHILE]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[BREAK]         = { nullptr,             nullptr,           PREC_NONE };
-		rules[END_OF_FILE]   = { nullptr,             nullptr,           PREC_NONE };
-		rules[ERROR]         = { nullptr,             nullptr,           PREC_NONE };
+		rules[LEFT_PAREN]    = { &Compiler::Grouping, nullptr,            PREC_NONE };
+		rules[RIGHT_PAREN]   = { nullptr,             nullptr,            PREC_NONE };
+		rules[LEFT_BRACE]    = { nullptr,             nullptr,            PREC_NONE };
+		rules[RIGHT_BRACE]   = { nullptr,             nullptr,            PREC_NONE };
+		rules[COMMA]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[DOT]           = { nullptr,             nullptr,            PREC_NONE };
+		rules[DOTDOT]        = { nullptr,             nullptr,            PREC_NONE };
+		rules[MINUS]         = { &Compiler::Unary,    &Compiler::Binary,  PREC_TERM };
+		rules[PLUS]          = { nullptr,             &Compiler::Binary,  PREC_TERM };
+		rules[SEMICOLON]     = { nullptr,             nullptr,            PREC_NONE };
+		rules[SLASH]         = { nullptr,             &Compiler::Binary,  PREC_FACTOR };
+		rules[STAR]          = { nullptr,             &Compiler::Binary,  PREC_FACTOR };
+		rules[BANG]          = { &Compiler::Unary,    nullptr,            PREC_NONE };
+		rules[QUESTION]      = { nullptr,             &Compiler::Trinary, PREC_QUESTION };
+		rules[COLON]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[BANG_EQUAL]    = { nullptr,             &Compiler::Equality,PREC_EQUALITY };
+		rules[EQUAL]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[EQUAL_EQUAL]   = { nullptr,             &Compiler::Equality,PREC_EQUALITY };
+		rules[GREATER]       = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
+		rules[GREATER_EQUAL] = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
+		rules[LESS]          = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
+		rules[LESS_EQUAL]    = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
+		rules[IDENTIFIER]    = { nullptr,             nullptr,            PREC_NONE };
+		rules[STRING]        = { nullptr,             nullptr,            PREC_NONE };
+		rules[NUMBER]        = { &Compiler::Number,   nullptr,            PREC_NONE };
+		rules[AND]           = { nullptr,             nullptr,            PREC_NONE };
+		rules[CLASS]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[ELSE]          = { nullptr,             nullptr,            PREC_NONE };
+		rules[FALSE]         = { &Compiler::Literal,  nullptr,            PREC_NONE };
+		rules[FUN]           = { nullptr,             nullptr,            PREC_NONE };
+		rules[FOR]           = { nullptr,             nullptr,            PREC_NONE };
+		rules[IF]            = { nullptr,             nullptr,            PREC_NONE };
+		rules[NIL]           = { &Compiler::Literal,  nullptr,            PREC_NONE };
+		rules[OR]            = { nullptr,             nullptr,            PREC_NONE };
+		rules[PRINT]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[RETURN]        = { nullptr,             nullptr,            PREC_NONE };
+		rules[SUPER]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[THIS]          = { nullptr,             nullptr,            PREC_NONE };
+		rules[TRUE]          = { &Compiler::Literal,  nullptr,            PREC_NONE };
+		rules[VAR]           = { nullptr,             nullptr,            PREC_NONE };
+		rules[WHILE]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[BREAK]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[END_OF_FILE]   = { nullptr,             nullptr,            PREC_NONE };
+		rules[ERROR]         = { nullptr,             nullptr,            PREC_NONE };
 	}
 
 	return &rules[type];
@@ -148,6 +148,13 @@ void Compiler::Consume(TokenType type, const char* message)
 void Compiler::ErrorAtCurrent(const char* message)
 {
 	ErrorAt(&parser.current, message);
+}
+
+Token Compiler::Peek(int32_t offset)
+{
+	// currentToken points to the next token to be processed
+	// so we need to subtract 1 to get the current token
+	return tokens[currentToken + offset - 1];
 }
 
 void Compiler::EmitByte(uint8_t byte)
@@ -216,27 +223,30 @@ void Compiler::ParsePrecedence(Precedence precedence)
 
 void Compiler::Number()
 {
-	const std::string& lexeme = parser.previous.lexeme;
-	char* endPtr = nullptr;
-	errno = 0;
-	double parsed = strtod(lexeme.c_str(), &endPtr);
-
-	// No characters were consumed -> invalid numeric literal.
-	if (endPtr == lexeme.c_str())
+	const std::string& lexeme = parser.previous.lexeme;	
+	VMValue value;
+	if (lexeme.find('.') != std::string::npos)
 	{
-		Error("Invalid numeric literal.");
-		return;
+		value = FloatValue::Create(std::stof(lexeme));
 	}
-
-	// Range error occurred during conversion.
-	if (errno == ERANGE)
+	else
 	{
-		Error("Numeric literal out of range.");
-		return;
+		value = IntValue::Create(std::stoi(lexeme));
 	}
-
-	VMValue value = parsed;
 	EmitConstant(value);
+}
+
+void Compiler::Literal()
+{
+	switch (parser.previous.type)
+	{
+		case FALSE: EmitByte(OP_FALSE); break;
+		case TRUE:  EmitByte(OP_TRUE);  break;
+		case NIL:   EmitByte(OP_NIL);   break;
+		default:
+			Error("Unknown literal.");
+			break;
+	}
 }
 
 void Compiler::Grouping()
@@ -252,8 +262,15 @@ void Compiler::Unary()
 	switch (operatorType)
 	{
 		case MINUS:
+		{
 			EmitByte(OP_NEGATE);
 			break;
+		}
+		case BANG:
+		{
+			EmitByte(OP_NOT);
+			break;
+		}
 		default:
 			Error("Unknown unary operator.");
 			break;
@@ -273,6 +290,10 @@ void Compiler::Binary()
 		case MINUS:         EmitByte(OP_SUBTRACT);  break;
 		case STAR:          EmitByte(OP_MULTIPLY);  break;
 		case SLASH:         EmitByte(OP_DIVIDE);    break;
+		case GREATER:       EmitByte(OP_GERATER);   break;
+		case GREATER_EQUAL: EmitByte(OP_GERATER); EmitByte(OP_NOT); break;
+		case LESS:          EmitByte(OP_LESS);      break;
+		case LESS_EQUAL:    EmitByte(OP_LESS);    EmitByte(OP_NOT); break;
 		default:
 			// Unreachable.
 			break;
@@ -296,4 +317,19 @@ void Compiler::Trinary()
 
 	Consume(COLON, "Expect ':' in trinary operator.");
 	ParsePrecedence((Precedence)(rule->precedence));
+}
+
+void Compiler::Equality()
+{
+	TokenType operatorType = parser.previous.type;
+	ParseRule* rule = GetRule(operatorType);
+	ParsePrecedence((Precedence)(rule->precedence + 1));
+	switch (operatorType)
+	{
+		case EQUAL_EQUAL:  EmitByte(OP_EQUAL); break;
+		case BANG_EQUAL:   EmitByte(OP_EQUAL); EmitByte(OP_NOT); break;
+		default:
+			// Unreachable.
+			break;
+	}
 }

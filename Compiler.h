@@ -51,6 +51,8 @@ protected:
     void ErrorAt(Token* token, const char* message);
     void ErrorAtCurrent(const char* message);
 
+    Token Peek(int32_t offset);
+
     void EmitByte(uint8_t byte);
     // base-case overload to stop recursion
     void EmitBytes() {}
@@ -69,8 +71,10 @@ protected:
 	void Expression();
     void ParsePrecedence(Precedence precedence);
     void Number();
+	void Literal();
     void Grouping();
 	void Unary();
     void Binary();
 	void Trinary();
+    void Equality();
 };

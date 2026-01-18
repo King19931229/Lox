@@ -86,7 +86,9 @@ int32_t Chunk::SimpleInstruction(const char* name, int32_t offset)
 
 void Chunk::PrintValue(VMValue value)
 {
-	printf("%g", value);
+	// Convert to std::string via Value's operator std::string()
+	std::string s = static_cast<std::string>(*value);
+	printf("%s", s.c_str());
 }
 
 int32_t Chunk::ConstantInstruction(const char* name, int32_t offset)
@@ -114,11 +116,11 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 	printf("%04d ", offset);
 	if (offset > 0 && lines[offset] == lines[offset - 1] && columns[offset] == columns[offset - 1])
 	{
-		printf("     | ");
+		printf("     |  ");
 	}
 	else
 	{
-		printf("%4d:%d ", lines[offset], columns[offset]);
+		printf("%4d:%-3d", lines[offset], columns[offset]);
 	}
 	uint8_t instruction = code[offset];
 	switch (instruction)
@@ -127,6 +129,12 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return ConstantInstruction("OP_CONSTANT", offset);
 		case OP_CONSTANT_LONG:
 			return ConstantLongInstruction("OP_CONSTANT_LONG", offset);
+		case OP_NIL:
+			return SimpleInstruction("OP_NIL", offset);
+		case OP_TRUE:
+			return SimpleInstruction("OP_TRUE", offset);
+		case OP_FALSE:
+			return SimpleInstruction("OP_FALSE", offset);
 		case OP_NEGATE:
 			return SimpleInstruction("OP_NEGATE", offset);
 		case OP_ADD:
@@ -137,6 +145,14 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return SimpleInstruction("OP_MULTIPLY", offset);
 		case OP_DIVIDE:
 			return SimpleInstruction("OP_DIVIDE", offset);
+		case OP_NOT:
+			return SimpleInstruction("OP_NOT", offset);
+		case OP_EQUAL:
+			return SimpleInstruction("OP_EQUAL", offset);
+		case OP_GERATER:
+			return SimpleInstruction("OP_GERATER", offset);
+		case OP_LESS:
+			return SimpleInstruction("OP_LESS", offset);
 		case OP_RETURN:
 			return SimpleInstruction("OP_RETURN", offset);
 		default:

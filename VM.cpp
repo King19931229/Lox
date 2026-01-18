@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <cstdarg>
 
 // #define DEBUG_TRACE_EXECUTION
 
@@ -18,7 +19,7 @@ void VM::Push(VMValue value)
 	if (stacks == nullptr)
 	{
 		stackCapacity = STACK_MAX;
-		stacks = (VMValue*)reallocate(nullptr, 0, sizeof(VMValue) * stackCapacity);
+		stacks = GROW_ARRAY(VMValue, (VMValue*)nullptr, 0, stackCapacity);
 		stackTop = stacks;
 	}
 
@@ -27,7 +28,7 @@ void VM::Push(VMValue value)
 	{
 		size_t oldCapacity = stackCapacity;
 		size_t newCapacity = oldCapacity * 2;
-		VMValue* newStacks = (VMValue*)reallocate(stacks, sizeof(VMValue) * oldCapacity, sizeof(VMValue) * newCapacity);
+		VMValue* newStacks = GROW_ARRAY(VMValue, stacks, oldCapacity, newCapacity);
 		stacks = newStacks;
 		stackTop = stacks + count;
 		stackCapacity = newCapacity;
@@ -52,7 +53,7 @@ VMValue VM::Pop()
 		size_t oldCapacity = stackCapacity;
 		size_t newCapacity = oldCapacity / 2;
 		if (newCapacity < STACK_MAX) newCapacity = STACK_MAX;
-		VMValue* newStacks = (VMValue*)reallocate(stacks, sizeof(VMValue) * oldCapacity, sizeof(VMValue) * newCapacity);
+		VMValue* newStacks = GROW_ARRAY(VMValue, stacks, oldCapacity, newCapacity);
 		stacks = newStacks;
 		stackTop = stacks + count;
 		stackCapacity = newCapacity;
@@ -61,14 +62,59 @@ VMValue VM::Pop()
 	return value;
 }
 
-void VM::Negate()
+VMValue VM::Peek(int distance)
+{
+	if (stacks == nullptr || stackTop - distance - 1 < stacks)
+	{
+		// Handle stack underflow
+		printf("Stack underflow!\n");
+		exit(1);
+	}
+	return *(stackTop - distance - 1);
+}
+
+bool VM::IsNumber(VMValue value)
+{
+	return value->type == TYPE_INT || value->type == TYPE_FLOAT;
+}
+
+bool VM::IsFalsey(VMValue value)
+{
+	return value->type == TYPE_NIL || (value->type == TYPE_BOOL && !static_cast<bool>(*value));
+}
+
+void VM::RuntimeError(const char* format, ...)
+{
+	// compute current instruction index
+	size_t instruction = (size_t)(ip - chunk->code - 1);
+	int32_t line = chunk->lines[instruction];
+	int32_t column = chunk->columns[instruction];
+	fprintf(stderr, "VM RuntimeError [%d:%d]: ", line, column);
+
+	va_list args;
+	va_start(args, format);
+	vfprintf(stderr, format, args);
+	va_end(args);
+
+	ResetStack();
+}
+
+InterpretResult VM::Negate()
 {
 	if (stacks == nullptr || stackTop == stacks)
 	{
 		printf("Stack underflow!\n");
 		exit(1);
 	}
+
+	if (!IsNumber(Peek(0)))
+	{
+		RuntimeError("Operand must be a number!");
+		return INTERPRET_RUNTIME_ERROR;
+	}
+
 	*(stackTop - 1) = -*(stackTop - 1);
+	return INTERPRET_OK;
 }
 
 void VM::Init()
@@ -102,6 +148,13 @@ InterpretResult VM::Run()
 	auto BINARY_OP = [&](OpCode op) {
 		VMValue b = Pop();
 		VMValue a = Pop();
+
+		if (!IsNumber(a) || !IsNumber(b))
+		{
+			RuntimeError("Operands must be numbers!");
+			return INTERPRET_RUNTIME_ERROR;
+		}
+
 		switch (op)
 		{
 			case OP_ADD:
@@ -116,11 +169,25 @@ InterpretResult VM::Run()
 			case OP_DIVIDE:
 				Push(a / b);
 				break;
+			case OP_GERATER:
+				Push(a > b);
+				break;
+			case OP_LESS:
+				Push(a < b);
+				break;
 			default:
 				// Handle unknown operation (could throw an exception or abort)
-				printf("Unknown binary operation!\n");
-				exit(1);
+				RuntimeError("Unknown binary operation!\n");
+				return INTERPRET_RUNTIME_ERROR;
 		}
+
+		return INTERPRET_OK;
+	};
+
+	auto NOT_OP = [&]() {
+		VMValue value = Pop();
+		Push(BoolValue::Create(IsFalsey(value)));
+		return INTERPRET_OK;
 	};
 
 	while (chunk->code)
@@ -149,17 +216,58 @@ InterpretResult VM::Run()
 				Push(value);
 				break;
 			}
+			case OP_NIL:
+			{
+				Push(NilValue::Create());
+				break;
+			}
+			case OP_TRUE:
+			{
+				Push(BoolValue::Create(true));
+				break;
+			}
+			case OP_FALSE:
+			{
+				Push(BoolValue::Create(false));
+				break;
+			}
 			case OP_NEGATE:
 			{
-				Negate();
+				InterpretResult result = Negate();
+				if (result != INTERPRET_OK)
+				{
+					return result;
+				}
 				break;
 			}
 			case OP_ADD:
 			case OP_SUBTRACT:
 			case OP_MULTIPLY:
 			case OP_DIVIDE:
+			case OP_GERATER:
+			case OP_LESS:
 			{
-				BINARY_OP((OpCode)opCode);
+				InterpretResult result = BINARY_OP((OpCode)opCode);
+				if (result != INTERPRET_OK)
+				{
+					return result;
+				}
+				break;
+			}
+			case OP_NOT:
+			{
+				InterpretResult result = NOT_OP();
+				if (result != INTERPRET_OK)
+				{
+					return result;
+				}
+				break;
+			}
+			case OP_EQUAL:
+			{
+				VMValue b = Pop();
+				VMValue a = Pop();
+				Push(BoolValue::Create(IsEqual(a, b)));
 				break;
 			}
 			case OP_RETURN:

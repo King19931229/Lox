@@ -22,8 +22,14 @@ protected:
 	// Stack operations
 	void ResetStack();
 	void Push(VMValue value);
-	void Negate();
+	InterpretResult Negate();
 	VMValue Pop();
+	VMValue Peek(int distance);
+
+	bool IsNumber(VMValue value);
+	bool IsFalsey(VMValue value);
+
+	void RuntimeError(const char* format, ...);
 
 public:
 	// VM lifecycle
