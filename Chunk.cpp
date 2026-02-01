@@ -1,5 +1,15 @@
 #include "Chunk.h"
+#include "VM.h"
 #include <cstdio>
+
+VMValue VMValue::Create(ValuePtr value)
+{
+	VM& vm = VM::GetInstance();
+	VMValue* object = new VMValue(value);
+	object->next = vm.objects;
+	vm.objects = object;
+	return VMValue(std::move(value));
+}
 
 // VMValueArray implementations
 void VMValueArray::Init()
@@ -86,8 +96,13 @@ int32_t Chunk::SimpleInstruction(const char* name, int32_t offset)
 
 void Chunk::PrintValue(VMValue value)
 {
+	if (!value.value)
+	{
+		printf("nil");
+		return;
+	}
 	// Convert to std::string via Value's operator std::string()
-	std::string s = static_cast<std::string>(*value);
+	std::string s = static_cast<std::string>(*value.value);
 	printf("%s", s.c_str());
 }
 

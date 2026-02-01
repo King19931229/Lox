@@ -82,7 +82,22 @@ void free_array_impl(T* pointer, size_t old_count)
 #define GROW_ARRAY(type, pointer, oldCount, newCount) grow_array_impl(pointer, oldCount, newCount)
 #define FREE_ARRAY(type, pointer, oldCount) free_array_impl(pointer, oldCount)
 
-typedef ValuePtr VMValue;
+class VM;
+
+struct VMValue
+{
+	ValuePtr value;
+	VMValue* next;
+	VMValue()
+		: value(nullptr)
+		, next(nullptr)
+	{}
+	VMValue(ValuePtr inValue)
+		: value(std::move(inValue))
+		, next(nullptr)
+	{}
+	static VMValue Create(ValuePtr value);
+};
 
 struct VMValueArray
 {

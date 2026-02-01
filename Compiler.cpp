@@ -65,8 +65,8 @@ void Compiler::ErrorAt(Token* token, const char* message)
 Compiler::ParseRule* Compiler::GetRule(TokenType type)
 {
 	// Use a lazily-initialized static vector and assign entries by index.
-	// This emulates designated initializers in a C++14-compliant way and
-	// is robust against changes in enum ordering as long as token names
+	// This emulates designated initializers in a C++14-compliant way
+	// and is robust against changes in enum ordering as long as token names
 	// remain consistent.
 	static std::vector<ParseRule> rules;
 	if (rules.empty())
@@ -96,7 +96,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[LESS]          = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
 		rules[LESS_EQUAL]    = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
 		rules[IDENTIFIER]    = { nullptr,             nullptr,            PREC_NONE };
-		rules[STRING]        = { nullptr,             nullptr,            PREC_NONE };
+		rules[STRING]        = { &Compiler::String,   nullptr,            PREC_NONE };
 		rules[NUMBER]        = { &Compiler::Number,   nullptr,            PREC_NONE };
 		rules[AND]           = { nullptr,             nullptr,            PREC_NONE };
 		rules[CLASS]         = { nullptr,             nullptr,            PREC_NONE };
@@ -227,11 +227,11 @@ void Compiler::Number()
 	VMValue value;
 	if (lexeme.find('.') != std::string::npos)
 	{
-		value = FloatValue::Create(std::stof(lexeme));
+		value = VMValue::Create(FloatValue::Create(std::stof(lexeme)));
 	}
 	else
 	{
-		value = IntValue::Create(std::stoi(lexeme));
+		value = VMValue::Create(IntValue::Create(std::stoi(lexeme)));
 	}
 	EmitConstant(value);
 }
@@ -247,6 +247,12 @@ void Compiler::Literal()
 			Error("Unknown literal.");
 			break;
 	}
+}
+
+void Compiler::String()
+{
+	const std::string& lexeme = parser.previous.lexeme;
+	EmitConstant(VMValue::Create(StringValue::Create(lexeme)));
 }
 
 void Compiler::Grouping()

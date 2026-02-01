@@ -8,6 +8,8 @@
 
 // #define DEBUG_TRACE_EXECUTION
 
+VM* VM::instance = nullptr;
+
 void VM::ResetStack()
 {
 	stackTop = stacks;
@@ -75,12 +77,17 @@ VMValue VM::Peek(int distance)
 
 bool VM::IsNumber(VMValue value)
 {
-	return value->type == TYPE_INT || value->type == TYPE_FLOAT;
+	return value.value && (value.value->type == TYPE_INT || value.value->type == TYPE_FLOAT);
 }
 
 bool VM::IsFalsey(VMValue value)
 {
-	return value->type == TYPE_NIL || (value->type == TYPE_BOOL && !static_cast<bool>(*value));
+	return !value.value || value.value->type == TYPE_NIL || (value.value->type == TYPE_BOOL && !static_cast<bool>(*value.value));
+}
+
+bool VM::IsString(VMValue value)
+{
+	return value.value && value.value->type == TYPE_STRING;
 }
 
 void VM::RuntimeError(const char* format, ...)
@@ -113,7 +120,7 @@ InterpretResult VM::Negate()
 		return INTERPRET_RUNTIME_ERROR;
 	}
 
-	*(stackTop - 1) = -*(stackTop - 1);
+	(stackTop - 1)->value = -(stackTop - 1)->value;
 	return INTERPRET_OK;
 }
 
@@ -125,6 +132,12 @@ void VM::Init()
 
 void VM::Free()
 {
+	while (objects)
+	{
+		VMValue* next = objects->next;
+		delete objects;
+		objects = next;
+	}
 }
 
 InterpretResult VM::Run()
@@ -149,7 +162,7 @@ InterpretResult VM::Run()
 		VMValue b = Pop();
 		VMValue a = Pop();
 
-		if (!IsNumber(a) || !IsNumber(b))
+		if (!(IsNumber(a) && IsNumber(b)))
 		{
 			RuntimeError("Operands must be numbers!");
 			return INTERPRET_RUNTIME_ERROR;
@@ -158,22 +171,22 @@ InterpretResult VM::Run()
 		switch (op)
 		{
 			case OP_ADD:
-				Push(a + b);
+				Push(VMValue::Create(a.value + b.value));
 				break;
 			case OP_SUBTRACT:
-				Push(a - b);
+				Push(VMValue::Create(a.value - b.value));
 				break;
 			case OP_MULTIPLY:
-				Push(a * b);
+				Push(VMValue::Create(a.value * b.value));
 				break;
 			case OP_DIVIDE:
-				Push(a / b);
+				Push(VMValue::Create(a.value / b.value));
 				break;
 			case OP_GERATER:
-				Push(a > b);
+				Push(VMValue::Create(a.value > b.value));
 				break;
 			case OP_LESS:
-				Push(a < b);
+				Push(VMValue::Create(a.value < b.value));
 				break;
 			default:
 				// Handle unknown operation (could throw an exception or abort)
@@ -184,9 +197,29 @@ InterpretResult VM::Run()
 		return INTERPRET_OK;
 	};
 
+	auto ADD_OP = [&]() {
+		VMValue b = Pop();
+		VMValue a = Pop();
+		if (IsString(a) && IsString(b))
+		{
+			Push(VMValue::Create(a.value + b.value));
+			return INTERPRET_OK;
+		}
+		else if (IsNumber(a) && IsNumber(b))
+		{
+			Push(VMValue::Create(a.value + b.value));
+			return INTERPRET_OK;
+		}
+		else
+		{
+			RuntimeError("Operands must be two numbers or two strings for '+'.");
+			return INTERPRET_RUNTIME_ERROR;
+		}
+	};
+
 	auto NOT_OP = [&]() {
 		VMValue value = Pop();
-		Push(BoolValue::Create(IsFalsey(value)));
+		Push(VMValue::Create(BoolValue::Create(IsFalsey(value))));
 		return INTERPRET_OK;
 	};
 
@@ -218,17 +251,17 @@ InterpretResult VM::Run()
 			}
 			case OP_NIL:
 			{
-				Push(NilValue::Create());
+				Push(VMValue::Create(NilValue::Create()));
 				break;
 			}
 			case OP_TRUE:
 			{
-				Push(BoolValue::Create(true));
+				Push(VMValue::Create(BoolValue::Create(true)));
 				break;
 			}
 			case OP_FALSE:
 			{
-				Push(BoolValue::Create(false));
+				Push(VMValue::Create(BoolValue::Create(false)));
 				break;
 			}
 			case OP_NEGATE:
@@ -241,6 +274,14 @@ InterpretResult VM::Run()
 				break;
 			}
 			case OP_ADD:
+			{
+				InterpretResult result = ADD_OP();
+				if (result != INTERPRET_OK)
+				{
+					return result;
+				}
+				break;
+			}
 			case OP_SUBTRACT:
 			case OP_MULTIPLY:
 			case OP_DIVIDE:
@@ -267,7 +308,7 @@ InterpretResult VM::Run()
 			{
 				VMValue b = Pop();
 				VMValue a = Pop();
-				Push(BoolValue::Create(IsEqual(a, b)));
+				Push(VMValue::Create(BoolValue::Create(IsEqual(a.value, b.value))));
 				break;
 			}
 			case OP_RETURN:
