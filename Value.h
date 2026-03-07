@@ -3,7 +3,7 @@
 #include <string>
 #include <stdexcept>
 #include <iostream>
-#include "Lox.h" // 包含 Lox 错误报告接口
+#include "Lox.h" // Lox runtime error reporting interface
 
 enum ValueType
 {
@@ -15,51 +15,61 @@ enum ValueType
 	TYPE_CALLABLE,
 	TYPE_CLASS,
 	TYPE_INSTANCE,
-	TYPE_ERROR // 新增：错误类型
+	TYPE_ERROR // Error type
 };
 
 struct Value;
 typedef std::shared_ptr<Value> ValuePtr;
 
-// 基础 Value 结构体
+// Base Value structure
 struct Value : public std::enable_shared_from_this<Value>
 {
 	ValueType type;
+	Value* next = nullptr; // GC linked list: tracks all heap-allocated Value objects in VM mode
+	bool isMarked = false; // GC mark flag for mark-sweep
 	virtual ~Value() = default;
 
-	// 类型转换现在对于不支持的操作返回 ErrorValue，而不是抛出异常
+	// Invalid conversions report runtime errors and return default values.
 	virtual operator int() const { Lox::GetInstance().RuntimeError("Invalid conversion to int."); return 0; }
 	virtual operator float() const { Lox::GetInstance().RuntimeError("Invalid conversion to float."); return 0.0f; }
 	virtual operator bool() const { Lox::GetInstance().RuntimeError("Invalid conversion to bool."); return false; }
 	virtual operator std::string() const { Lox::GetInstance().RuntimeError("Invalid conversion to string."); return ""; }
 };
 
-// --- 具体 Value 类型定义 ---
+// --- Concrete Value types ---
 
 struct ErrorValue : public Value
 {
 	std::string message;
-	static ValuePtr Create(const std::string& inMessage)
+	static Value* CreateRaw(const std::string& inMessage)
 	{
-		auto val = std::make_shared<ErrorValue>();
+		auto val = new ErrorValue();
 		val->type = TYPE_ERROR;
 		val->message = inMessage;
 		return val;
 	}
+	static ValuePtr Create(const std::string& inMessage)
+	{
+		return ValuePtr(CreateRaw(inMessage));
+	}
 
-	operator bool() const override { return false; } // 错误值是 falsey
+	operator bool() const override { return false; } // Error values are falsey
 	operator std::string() const override { return message; }
 };
 
 struct IntValue : public Value
 {
 	int value = 0;
-	static ValuePtr Create(int inValue)
+	static Value* CreateRaw(int inValue)
 	{
-		auto val = std::make_shared<IntValue>();
+		auto val = new IntValue();
 		val->type = TYPE_INT;
 		val->value = inValue;
 		return val;
+	}
+	static ValuePtr Create(int inValue)
+	{
+		return ValuePtr(CreateRaw(inValue));
 	}
 
 	operator int() const override { return value; }
@@ -71,12 +81,16 @@ struct IntValue : public Value
 struct FloatValue : public Value
 {
 	float value = 0;
-	static ValuePtr Create(float inValue)
+	static Value* CreateRaw(float inValue)
 	{
-		auto val = std::make_shared<FloatValue>();
+		auto val = new FloatValue();
 		val->type = TYPE_FLOAT;
 		val->value = inValue;
 		return val;
+	}
+	static ValuePtr Create(float inValue)
+	{
+		return ValuePtr(CreateRaw(inValue));
 	}
 
 	operator int() const override { return static_cast<int>(value); }
@@ -88,12 +102,16 @@ struct FloatValue : public Value
 struct StringValue : public Value
 {
 	std::string value;
-	static ValuePtr Create(const std::string& inValue)
+	static Value* CreateRaw(const std::string& inValue)
 	{
-		auto val = std::make_shared<StringValue>();
+		auto val = new StringValue();
 		val->type = TYPE_STRING;
 		val->value = inValue;
 		return val;
+	}
+	static ValuePtr Create(const std::string& inValue)
+	{
+		return ValuePtr(CreateRaw(inValue));
 	}
 
 	operator bool() const override { return !value.empty(); }
@@ -103,12 +121,16 @@ struct StringValue : public Value
 struct BoolValue : public Value
 {
 	bool value = false;
-	static ValuePtr Create(bool inValue)
+	static Value* CreateRaw(bool inValue)
 	{
-		auto val = std::make_shared<BoolValue>();
+		auto val = new BoolValue();
 		val->type = TYPE_BOOL;
 		val->value = inValue;
 		return val;
+	}
+	static ValuePtr Create(bool inValue)
+	{
+		return ValuePtr(CreateRaw(inValue));
 	}
 
 	operator bool() const override { return value; }
@@ -118,128 +140,235 @@ struct BoolValue : public Value
 struct NilValue : public Value
 {
 	NilValue() { type = TYPE_NIL; }
+	static Value* CreateRaw()
+	{
+		return new NilValue();
+	}
 	static ValuePtr Create()
 	{
-		return std::make_shared<NilValue>();
+		return ValuePtr(CreateRaw());
 	}
 
 	operator bool() const override { return false; }
 	operator std::string() const override { return "nil"; }
 };
 
-// --- 操作符重载 ---
+// --- Raw Value* helper functions (C++ forbids operator overloads on pure pointer types) ---
 
-// 辅助宏，用于在操作前检查并传递错误
-#define PROPAGATE_ERROR(left, right) \
-    if (left->type == TYPE_ERROR) return left; \
-    if (right->type == TYPE_ERROR) return right;
+#define VAL_PROPAGATE_ERROR(left, right) \
+    if ((left)->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(left)->message); \
+    if ((right)->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(right)->message);
 
-inline ValuePtr operator-(const ValuePtr& val)
+inline Value* ValNegate(const Value* val)
 {
-	if (val->type == TYPE_ERROR) return val;
-	if (val->type == TYPE_INT) return IntValue::Create(-static_cast<int>(*val));
-	if (val->type == TYPE_FLOAT) return FloatValue::Create(-static_cast<float>(*val));
-
+	if (val->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(val)->message);
+	if (val->type == TYPE_INT)   return IntValue::CreateRaw(-static_cast<int>(*val));
+	if (val->type == TYPE_FLOAT) return FloatValue::CreateRaw(-static_cast<float>(*val));
 	Lox::GetInstance().RuntimeError("Operand must be a number for unary minus.");
-	return ErrorValue::Create("Operand must be a number for unary minus.");
+	return ErrorValue::CreateRaw("Operand must be a number for unary minus.");
 }
 
-#define DEFINE_ARITHMETIC_OPERATOR(op, op_name) \
-inline ValuePtr operator op(const ValuePtr& left, const ValuePtr& right) \
-{ \
-    PROPAGATE_ERROR(left, right); \
-	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT)) \
-    { \
-        if (left->type == TYPE_INT && right->type == TYPE_INT) \
-            return IntValue::Create(static_cast<int>(*left) op static_cast<int>(*right)); \
-        return FloatValue::Create(static_cast<float>(*left) op static_cast<float>(*right)); \
-    } \
-	Lox::GetInstance().RuntimeError("Operands must be numbers for " op_name "."); \
-	return ErrorValue::Create("Operands must be numbers for " op_name "."); \
-}
-
-DEFINE_ARITHMETIC_OPERATOR(-, "subtraction")
-DEFINE_ARITHMETIC_OPERATOR(*, "multiplication")
-
-inline ValuePtr operator/(const ValuePtr& left, const ValuePtr& right)
+inline Value* ValAdd(const Value* left, const Value* right)
 {
-	PROPAGATE_ERROR(left, right);
-	if ((left->type != TYPE_INT && left->type != TYPE_FLOAT) || (right->type != TYPE_INT && right->type != TYPE_FLOAT))
-	{
-		Lox::GetInstance().RuntimeError("Operands must be numbers for division.");
-		return ErrorValue::Create("Operands must be numbers for division.");
-	}
-	if ((right->type == TYPE_INT && static_cast<int>(*right) == 0) || (right->type == TYPE_FLOAT && static_cast<float>(*right) == 0.0f))
-	{
-		Lox::GetInstance().RuntimeError("Division by zero.");
-		return ErrorValue::Create("Division by zero.");
-	}
-	if (left->type == TYPE_INT && right->type == TYPE_INT)
-		return IntValue::Create(static_cast<int>(*left) / static_cast<int>(*right));
-	return FloatValue::Create(static_cast<float>(*left) / static_cast<float>(*right));
-}
-
-inline ValuePtr operator+(const ValuePtr& left, const ValuePtr& right)
-{
-	PROPAGATE_ERROR(left, right);
+	VAL_PROPAGATE_ERROR(left, right);
 	if (left->type == TYPE_STRING && right->type == TYPE_STRING)
-		return StringValue::Create(static_cast<std::string>(*left) + static_cast<std::string>(*right));
+		return StringValue::CreateRaw(static_cast<std::string>(*left) + static_cast<std::string>(*right));
 	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
 	{
 		if (left->type == TYPE_INT && right->type == TYPE_INT)
-			return IntValue::Create(static_cast<int>(*left) + static_cast<int>(*right));
-		return FloatValue::Create(static_cast<float>(*left) + static_cast<float>(*right));
+			return IntValue::CreateRaw(static_cast<int>(*left) + static_cast<int>(*right));
+		return FloatValue::CreateRaw(static_cast<float>(*left) + static_cast<float>(*right));
 	}
 	Lox::GetInstance().RuntimeError("Operands must be two numbers or two strings for '+'.");
-	return ErrorValue::Create("Operands must be two numbers or two strings for '+'.");
+	return ErrorValue::CreateRaw("Operands must be two numbers or two strings for '+'.");
 }
 
-#define DEFINE_COMPARISON_OPERATOR(op, op_name) \
-inline ValuePtr operator op(const ValuePtr& left, const ValuePtr& right) \
-{ \
-    PROPAGATE_ERROR(left, right); \
-	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT)) \
-		return BoolValue::Create(static_cast<float>(*left) op static_cast<float>(*right)); \
-	Lox::GetInstance().RuntimeError("Operands must be numbers for " op_name "."); \
-	return ErrorValue::Create("Operands must be numbers for " op_name "."); \
-}
-
-DEFINE_COMPARISON_OPERATOR(< , "comparison")
-DEFINE_COMPARISON_OPERATOR(>, "comparison")
-DEFINE_COMPARISON_OPERATOR(<=, "comparison")
-DEFINE_COMPARISON_OPERATOR(>=, "comparison")
-
-inline bool IsEqual(const ValuePtr& left, const ValuePtr& right)
+inline Value* ValSub(const Value* left, const Value* right)
 {
-	// 如果都是数字类型，则转换为 float 进行比较
+	VAL_PROPAGATE_ERROR(left, right);
 	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
 	{
-		return static_cast<float>(*left) == static_cast<float>(*right);
+		if (left->type == TYPE_INT && right->type == TYPE_INT)
+			return IntValue::CreateRaw(static_cast<int>(*left) - static_cast<int>(*right));
+		return FloatValue::CreateRaw(static_cast<float>(*left) - static_cast<float>(*right));
 	}
+	Lox::GetInstance().RuntimeError("Operands must be numbers for subtraction.");
+	return ErrorValue::CreateRaw("Operands must be numbers for subtraction.");
+}
 
-	// 否则，要求类型必须完全相同
-	if (left->type != right->type)
+inline Value* ValMul(const Value* left, const Value* right)
+{
+	VAL_PROPAGATE_ERROR(left, right);
+	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
 	{
-		return false;
+		if (left->type == TYPE_INT && right->type == TYPE_INT)
+			return IntValue::CreateRaw(static_cast<int>(*left) * static_cast<int>(*right));
+		return FloatValue::CreateRaw(static_cast<float>(*left) * static_cast<float>(*right));
 	}
+	Lox::GetInstance().RuntimeError("Operands must be numbers for multiplication.");
+	return ErrorValue::CreateRaw("Operands must be numbers for multiplication.");
+}
 
+inline Value* ValDiv(const Value* left, const Value* right)
+{
+	VAL_PROPAGATE_ERROR(left, right);
+	if ((left->type != TYPE_INT && left->type != TYPE_FLOAT) || (right->type != TYPE_INT && right->type != TYPE_FLOAT))
+	{
+		Lox::GetInstance().RuntimeError("Operands must be numbers for division.");
+		return ErrorValue::CreateRaw("Operands must be numbers for division.");
+	}
+	if ((right->type == TYPE_INT && static_cast<int>(*right) == 0) ||
+		(right->type == TYPE_FLOAT && static_cast<float>(*right) == 0.0f))
+	{
+		Lox::GetInstance().RuntimeError("Division by zero.");
+		return ErrorValue::CreateRaw("Division by zero.");
+	}
+	if (left->type == TYPE_INT && right->type == TYPE_INT)
+		return IntValue::CreateRaw(static_cast<int>(*left) / static_cast<int>(*right));
+	return FloatValue::CreateRaw(static_cast<float>(*left) / static_cast<float>(*right));
+}
+
+inline Value* ValLess(const Value* left, const Value* right)
+{
+	VAL_PROPAGATE_ERROR(left, right);
+	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
+		return BoolValue::CreateRaw(static_cast<float>(*left) < static_cast<float>(*right));
+	Lox::GetInstance().RuntimeError("Operands must be numbers for comparison.");
+	return ErrorValue::CreateRaw("Operands must be numbers for comparison.");
+}
+
+inline Value* ValGreater(const Value* left, const Value* right)
+{
+	VAL_PROPAGATE_ERROR(left, right);
+	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
+		return BoolValue::CreateRaw(static_cast<float>(*left) > static_cast<float>(*right));
+	Lox::GetInstance().RuntimeError("Operands must be numbers for comparison.");
+	return ErrorValue::CreateRaw("Operands must be numbers for comparison.");
+}
+
+inline Value* ValLessEq(const Value* left, const Value* right)
+{
+	VAL_PROPAGATE_ERROR(left, right);
+	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
+		return BoolValue::CreateRaw(static_cast<float>(*left) <= static_cast<float>(*right));
+	Lox::GetInstance().RuntimeError("Operands must be numbers for comparison.");
+	return ErrorValue::CreateRaw("Operands must be numbers for comparison.");
+}
+
+inline Value* ValGreaterEq(const Value* left, const Value* right)
+{
+	VAL_PROPAGATE_ERROR(left, right);
+	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
+		return BoolValue::CreateRaw(static_cast<float>(*left) >= static_cast<float>(*right));
+	Lox::GetInstance().RuntimeError("Operands must be numbers for comparison.");
+	return ErrorValue::CreateRaw("Operands must be numbers for comparison.");
+}
+
+inline bool IsEqual(const Value* left, const Value* right)
+{
+	if ((left->type == TYPE_INT || left->type == TYPE_FLOAT) && (right->type == TYPE_INT || right->type == TYPE_FLOAT))
+		return static_cast<float>(*left) == static_cast<float>(*right);
+	if (left->type != right->type)
+		return false;
 	switch (left->type)
 	{
 		case TYPE_NIL:    return true;
 		case TYPE_BOOL:   return static_cast<bool>(*left) == static_cast<bool>(*right);
-		case TYPE_STRING: return static_cast<std::string>(*left) == static_cast<std::string>(*right);
-		default:          return false; // 数字类型已在上面处理
+		case TYPE_STRING: return static_cast<const StringValue*>(left)->value == static_cast<const StringValue*>(right)->value;
+		default:          return false;
 	}
+}
+
+inline Value* ValEqual(const Value* left, const Value* right)
+{
+	VAL_PROPAGATE_ERROR(left, right);
+	return BoolValue::CreateRaw(IsEqual(left, right));
+}
+
+inline Value* ValNotEqual(const Value* left, const Value* right)
+{
+	VAL_PROPAGATE_ERROR(left, right);
+	return BoolValue::CreateRaw(!IsEqual(left, right));
+}
+
+// --- ValuePtr operator overloads (shared_ptr<Value> is a class type, so operators are valid) ---
+
+inline bool IsEqual(const ValuePtr& left, const ValuePtr& right)
+{
+	return IsEqual(left.get(), right.get());
+}
+
+inline ValuePtr operator-(const ValuePtr& val)
+{
+	return ValuePtr(ValNegate(val.get()));
+}
+
+inline ValuePtr operator+(const ValuePtr& left, const ValuePtr& right)
+{
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValAdd(left.get(), right.get()));
+}
+
+inline ValuePtr operator-(const ValuePtr& left, const ValuePtr& right)
+{
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValSub(left.get(), right.get()));
+}
+
+inline ValuePtr operator*(const ValuePtr& left, const ValuePtr& right)
+{
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValMul(left.get(), right.get()));
+}
+
+inline ValuePtr operator/(const ValuePtr& left, const ValuePtr& right)
+{
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValDiv(left.get(), right.get()));
+}
+
+inline ValuePtr operator<(const ValuePtr& left, const ValuePtr& right)
+{
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValLess(left.get(), right.get()));
+}
+
+inline ValuePtr operator>(const ValuePtr& left, const ValuePtr& right)
+{
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValGreater(left.get(), right.get()));
+}
+
+inline ValuePtr operator<=(const ValuePtr& left, const ValuePtr& right)
+{
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValLessEq(left.get(), right.get()));
+}
+
+inline ValuePtr operator>=(const ValuePtr& left, const ValuePtr& right)
+{
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValGreaterEq(left.get(), right.get()));
 }
 
 inline ValuePtr operator==(const ValuePtr& left, const ValuePtr& right)
 {
-	PROPAGATE_ERROR(left, right);
-	return BoolValue::Create(IsEqual(left, right));
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValEqual(left.get(), right.get()));
 }
 
 inline ValuePtr operator!=(const ValuePtr& left, const ValuePtr& right)
 {
-	PROPAGATE_ERROR(left, right);
-	return BoolValue::Create(!IsEqual(left, right));
+	if (left->type == TYPE_ERROR) return left;
+	if (right->type == TYPE_ERROR) return right;
+	return ValuePtr(ValNotEqual(left.get(), right.get()));
 }

@@ -71,17 +71,17 @@ void TestChunk()
 		uint32_t line = 1;
 		uint32_t column = 1;
 
-		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::Create(1)));
+		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(1)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(2)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(2)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
 		chunk.Write(OP_MULTIPLY, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(3)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(3)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
@@ -100,15 +100,15 @@ void TestChunk()
 		uint32_t line = 1;
 		uint32_t column = 1;
 
-		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::Create(1)));
+		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(1)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(2)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(2)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(3)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(3)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
@@ -128,17 +128,17 @@ void TestChunk()
 		uint32_t line = 1;
 		uint32_t column = 1;
 
-		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::Create(3)));
+		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(3)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(2)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(2)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
 		chunk.Write(OP_SUBTRACT, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(1)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(1)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
@@ -157,26 +157,26 @@ void TestChunk()
 		uint32_t line = 1;
 		uint32_t column = 1;
 
-		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::Create(1)));
+		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(1)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(2)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(2)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(3)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(3)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
 		chunk.Write(OP_MULTIPLY, line, column);
 		chunk.Write(OP_ADD, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(4)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(4)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(5)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(5)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
@@ -198,19 +198,19 @@ void TestChunk()
 		uint32_t line = 1;
 		uint32_t column = 1;
 
-		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::Create(4)));
+		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(4)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(3)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(3)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(0)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(0)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(2)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(2)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
@@ -231,15 +231,15 @@ void TestChunk()
 		uint32_t line = 1;
 		uint32_t column = 1;
 
-		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::Create(4)));
+		uint32_t index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(4)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(3)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(3)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
-		index = chunk.AddConstant(VMValue::Create(IntValue::Create(2)));
+		index = chunk.AddConstant(VMValue::Create(IntValue::CreateRaw(2)));
 		chunk.Write(OP_CONSTANT, line, column);
 		chunk.Write(index, line, column);
 
@@ -259,10 +259,7 @@ int main(int argc, char* argv[])
 {
 	VM& vm = VM::GetInstance();
 	vm.Init();
-	// vm.Interpret("(-1 + 2) * 3 - -4");
-	//vm.Interpret("!true");
-	//vm.Interpret("!(5 - 4 > 3 * 2 == !nil)");
-	vm.Interpret("\"str\" + \"in\" + \"g\"");
+	vm.Interpret("var a = (-1 + 2) * 3 - -4;");
 	vm.Free();
 	return 0;
 }

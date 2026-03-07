@@ -120,24 +120,28 @@ InterpretResult VM::Negate()
 		return INTERPRET_RUNTIME_ERROR;
 	}
 
-	(stackTop - 1)->value = -(stackTop - 1)->value;
+	(stackTop - 1)->value = ValNegate((stackTop - 1)->value);
 	return INTERPRET_OK;
 }
 
 void VM::Init()
 {
 	chunk = nullptr;
+	objects = nullptr;
 	ResetStack();
 }
 
 void VM::Free()
 {
-	while (objects)
+	// Clean up all the VM allocated objects
+	Value* object = objects;
+	while (object != nullptr)
 	{
-		VMValue* next = objects->next;
-		delete objects;
-		objects = next;
+		Value* next = object->next;
+		delete object;
+		object = next;
 	}
+	objects = nullptr;
 }
 
 InterpretResult VM::Run()
@@ -171,22 +175,22 @@ InterpretResult VM::Run()
 		switch (op)
 		{
 			case OP_ADD:
-				Push(VMValue::Create(a.value + b.value));
+				Push(VMValue::Create(ValAdd(a.value, b.value)));
 				break;
 			case OP_SUBTRACT:
-				Push(VMValue::Create(a.value - b.value));
+				Push(VMValue::Create(ValSub(a.value, b.value)));
 				break;
 			case OP_MULTIPLY:
-				Push(VMValue::Create(a.value * b.value));
+				Push(VMValue::Create(ValMul(a.value, b.value)));
 				break;
 			case OP_DIVIDE:
-				Push(VMValue::Create(a.value / b.value));
+				Push(VMValue::Create(ValDiv(a.value, b.value)));
 				break;
 			case OP_GERATER:
-				Push(VMValue::Create(a.value > b.value));
+				Push(VMValue::Create(ValGreater(a.value, b.value)));
 				break;
 			case OP_LESS:
-				Push(VMValue::Create(a.value < b.value));
+				Push(VMValue::Create(ValLess(a.value, b.value)));
 				break;
 			default:
 				// Handle unknown operation (could throw an exception or abort)
@@ -202,12 +206,12 @@ InterpretResult VM::Run()
 		VMValue a = Pop();
 		if (IsString(a) && IsString(b))
 		{
-			Push(VMValue::Create(a.value + b.value));
+			Push(VMValue::Create(ValAdd(a.value, b.value)));
 			return INTERPRET_OK;
 		}
 		else if (IsNumber(a) && IsNumber(b))
 		{
-			Push(VMValue::Create(a.value + b.value));
+			Push(VMValue::Create(ValAdd(a.value, b.value)));
 			return INTERPRET_OK;
 		}
 		else
@@ -219,7 +223,7 @@ InterpretResult VM::Run()
 
 	auto NOT_OP = [&]() {
 		VMValue value = Pop();
-		Push(VMValue::Create(BoolValue::Create(IsFalsey(value))));
+		Push(VMValue::Create(BoolValue::CreateRaw(IsFalsey(value))));
 		return INTERPRET_OK;
 	};
 
@@ -251,17 +255,17 @@ InterpretResult VM::Run()
 			}
 			case OP_NIL:
 			{
-				Push(VMValue::Create(NilValue::Create()));
+				Push(VMValue::Create(NilValue::CreateRaw()));
 				break;
 			}
 			case OP_TRUE:
 			{
-				Push(VMValue::Create(BoolValue::Create(true)));
+				Push(VMValue::Create(BoolValue::CreateRaw(true)));
 				break;
 			}
 			case OP_FALSE:
 			{
-				Push(VMValue::Create(BoolValue::Create(false)));
+				Push(VMValue::Create(BoolValue::CreateRaw(false)));
 				break;
 			}
 			case OP_NEGATE:
@@ -308,14 +312,42 @@ InterpretResult VM::Run()
 			{
 				VMValue b = Pop();
 				VMValue a = Pop();
-				Push(VMValue::Create(BoolValue::Create(IsEqual(a.value, b.value))));
+				Push(VMValue::Create(BoolValue::CreateRaw(IsEqual(a.value, b.value))));
 				break;
 			}
-			case OP_RETURN:
+			case OP_PRINT:
 			{
 				VMValue value = Pop();
 				chunk->PrintValue(value);
 				printf("\n");
+				break;
+			}
+			case OP_DEFINE_GLOBAL:
+			{
+				VMValue nameValue = READ_CONSTANT();
+				if (!IsString(nameValue))
+				{
+					RuntimeError("Global variable name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				std::string name = static_cast<std::string>(*nameValue.value);
+				globals[name] = Pop();
+				break;
+			}
+			case OP_DEFINE_GLOBAL_LONG:
+			{
+				VMValue nameValue = READ_LONG_CONSTANT();
+				if (!IsString(nameValue))
+				{
+					RuntimeError("Global variable name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				std::string name = static_cast<std::string>(*nameValue.value);
+				globals[name] = Pop();
+				break;
+			}
+			case OP_RETURN:
+			{
 				return INTERPRET_OK;
 			}
 		}

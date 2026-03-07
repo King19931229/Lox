@@ -1,5 +1,7 @@
 #pragma once
 #include "Chunk.h"
+#include <unordered_map>
+#include <vector>
 
 enum InterpretResult
 {
@@ -22,7 +24,9 @@ protected:
     size_t stackCapacity = STACK_MAX;
     VMValue* stackTop = nullptr;
 
-	VMValue* objects = nullptr;
+	Value* objects = nullptr;
+
+	std::unordered_map<std::string, VMValue> globals;
 
 	// Stack operations
 	void ResetStack();

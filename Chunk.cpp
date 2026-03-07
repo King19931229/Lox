@@ -2,13 +2,16 @@
 #include "VM.h"
 #include <cstdio>
 
-VMValue VMValue::Create(ValuePtr value)
+VMValue VMValue::Create(Value* value)
 {
+	if (!value) return VMValue(nullptr);
 	VM& vm = VM::GetInstance();
-	VMValue* object = new VMValue(value);
-	object->next = vm.objects;
-	vm.objects = object;
-	return VMValue(std::move(value));
+	if (value->next == nullptr && vm.objects != value)
+	{
+		value->next = vm.objects;
+		vm.objects = value;
+	}
+	return VMValue(value);
 }
 
 // VMValueArray implementations
@@ -75,6 +78,13 @@ int32_t Chunk::GetColumn(int32_t offset)
 
 int32_t Chunk::AddConstant(VMValue value)
 {
+	for (int32_t i = 0; i < constants.count; ++i)
+	{
+		if (IsEqual(constants.values[i].value, value.value))
+		{
+			return i;
+		}
+	}
 	constants.Write(value);
 	return constants.count - 1;
 }
@@ -152,6 +162,8 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return SimpleInstruction("OP_FALSE", offset);
 		case OP_NEGATE:
 			return SimpleInstruction("OP_NEGATE", offset);
+		case OP_PRINT:
+			return SimpleInstruction("OP_PRINT", offset);
 		case OP_ADD:
 			return SimpleInstruction("OP_ADD", offset);
 		case OP_SUBTRACT:
@@ -162,6 +174,10 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return SimpleInstruction("OP_DIVIDE", offset);
 		case OP_NOT:
 			return SimpleInstruction("OP_NOT", offset);
+		case OP_DEFINE_GLOBAL:
+			return ConstantInstruction("OP_DEFINE_GLOBAL", offset);
+		case OP_DEFINE_GLOBAL_LONG:
+			return ConstantLongInstruction("OP_DEFINE_GLOBAL_LONG", offset);
 		case OP_EQUAL:
 			return SimpleInstruction("OP_EQUAL", offset);
 		case OP_GERATER:

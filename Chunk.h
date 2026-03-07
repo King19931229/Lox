@@ -4,9 +4,9 @@
 #include <malloc.h>
 #include <cstdlib>
 #include <vector>
-#include <type_traits> // ÒýÈëÀàÐÍÝÍÈ¡
-#include <new>         // ÒýÈë placement new
-#include <utility>     // ÒýÈë std::move
+#include <type_traits> // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡
+#include <new>         // ï¿½ï¿½ï¿½ï¿½ placement new
+#include <utility>     // ï¿½ï¿½ï¿½ï¿½ std::move
 
 enum OpCode
 {
@@ -16,18 +16,21 @@ enum OpCode
 	OP_TRUE,
 	OP_FALSE,
 	OP_NEGATE,
+	OP_PRINT,
 	OP_ADD,
 	OP_SUBTRACT,
 	OP_MULTIPLY,
 	OP_DIVIDE,
 	OP_NOT,
+	OP_DEFINE_GLOBAL,
+	OP_DEFINE_GLOBAL_LONG,
 	OP_EQUAL,
 	OP_GERATER,
 	OP_LESS,
 	OP_RETURN,
 };
 
-// Ô­Ê¼µÄ reallocate º¯Êý±£ÁôÓÃÓÚ POD ÀàÐÍ
+// Ô­Ê¼ï¿½ï¿½ reallocate ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ POD ï¿½ï¿½ï¿½ï¿½
 inline void* reallocate(void* pointer, size_t oldSize, size_t newSize)
 {
 	if (newSize == 0)
@@ -74,7 +77,7 @@ void free_array_impl(T* pointer, size_t old_count)
 	}
 	else
 	{
-		delete[] pointer; // ÕýÈ·Îö¹¹ËùÓÐÔªËØ
+		delete[] pointer; // ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ôªï¿½ï¿½
 	}
 }
 
@@ -86,17 +89,14 @@ class VM;
 
 struct VMValue
 {
-	ValuePtr value;
-	VMValue* next;
+	Value* value;
 	VMValue()
 		: value(nullptr)
-		, next(nullptr)
 	{}
-	VMValue(ValuePtr inValue)
-		: value(std::move(inValue))
-		, next(nullptr)
+	VMValue(Value* inValue)
+		: value(inValue)
 	{}
-	static VMValue Create(ValuePtr value);
+	static VMValue Create(Value* value);
 };
 
 struct VMValueArray
