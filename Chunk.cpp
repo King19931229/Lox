@@ -178,6 +178,14 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return ConstantInstruction("OP_DEFINE_GLOBAL", offset);
 		case OP_DEFINE_GLOBAL_LONG:
 			return ConstantLongInstruction("OP_DEFINE_GLOBAL_LONG", offset);
+		case OP_GET_GLOBAL:
+			return ConstantInstruction("OP_GET_GLOBAL", offset);
+		case OP_GET_GLOBAL_LONG:
+			return ConstantLongInstruction("OP_GET_GLOBAL_LONG", offset);
+		case OP_SET_GLOBAL:
+			return ConstantInstruction("OP_SET_GLOBAL", offset);
+		case OP_SET_GLOBAL_LONG:
+			return ConstantLongInstruction("OP_SET_GLOBAL_LONG", offset);
 		case OP_EQUAL:
 			return SimpleInstruction("OP_EQUAL", offset);
 		case OP_GERATER:

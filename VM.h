@@ -26,7 +26,8 @@ protected:
 
 	Value* objects = nullptr;
 
-	std::unordered_map<std::string, VMValue> globals;
+	std::unordered_map<std::string, size_t> globalNameToSlot;
+	std::vector<VMValue> globalSlots;
 
 	// Stack operations
 	void ResetStack();

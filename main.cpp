@@ -259,7 +259,7 @@ int main(int argc, char* argv[])
 {
 	VM& vm = VM::GetInstance();
 	vm.Init();
-	vm.Interpret("var a = (-1 + 2) * 3 - -4;");
+	vm.Interpret("var a = (-1 + 2) * 3 - -4; a = a * a; print(a + 1);");
 	vm.Free();
 	return 0;
 }

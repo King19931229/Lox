@@ -24,12 +24,13 @@ private:
 		PREC_PRIMARY
 	};
 
-	typedef void (Compiler::* ParseFn)();
+	typedef void (Compiler::* PrefixParseFn)(bool);
+	typedef void (Compiler::* InfixParseFn)();
 
 	struct ParseRule
 	{
-		ParseFn prefix;
-		ParseFn infix;
+		PrefixParseFn prefix;
+		InfixParseFn infix;
 		Precedence precedence;
 	};
 
@@ -42,7 +43,7 @@ private:
 	} parser;
 
 	std::vector<Token> tokens;
-	size_t currentToken = 0;
+	size_t nextToken = 0;
 	Chunk* compilingChunk = nullptr;
 
 	// --- Core Parsing Flow ---
@@ -51,20 +52,22 @@ private:
 	void Statement();
 	void VarDeclaration();
 	void PrintStatement();
+	void ExpressionStatement();
 	void Expression();
 	void ParsePrecedence(Precedence precedence);
 	void Synchronize();
 	void EndCompiler();
 
 	// --- Grammar Rules ---
-	void Number();
-	void Literal();
-	void String();
-	void Grouping();
-	void Unary();
+	void Number(bool canAssign);
+	void Literal(bool canAssign);
+	void String(bool canAssign);
+	void Grouping(bool canAssign);
+	void Unary(bool canAssign);
 	void Binary();
 	void Trinary();
 	void Equality();
+	void NamedVariable(bool canAssign);
 
 	// --- Token Helpers ---
 	Token ScanToken();

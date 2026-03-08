@@ -4,9 +4,9 @@
 #include <malloc.h>
 #include <cstdlib>
 #include <vector>
-#include <type_traits> // ����������ȡ
-#include <new>         // ���� placement new
-#include <utility>     // ���� std::move
+#include <type_traits>
+#include <new>
+#include <utility>
 
 enum OpCode
 {
@@ -24,13 +24,16 @@ enum OpCode
 	OP_NOT,
 	OP_DEFINE_GLOBAL,
 	OP_DEFINE_GLOBAL_LONG,
+	OP_GET_GLOBAL,
+	OP_GET_GLOBAL_LONG,
+	OP_SET_GLOBAL,
+	OP_SET_GLOBAL_LONG,
 	OP_EQUAL,
 	OP_GERATER,
 	OP_LESS,
 	OP_RETURN,
 };
 
-// ԭʼ�� reallocate ������������ POD ����
 inline void* reallocate(void* pointer, size_t oldSize, size_t newSize)
 {
 	if (newSize == 0)
@@ -77,7 +80,7 @@ void free_array_impl(T* pointer, size_t old_count)
 	}
 	else
 	{
-		delete[] pointer; // ��ȷ��������Ԫ��
+		delete[] pointer;
 	}
 }
 

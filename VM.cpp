@@ -227,6 +227,76 @@ InterpretResult VM::Run()
 		return INTERPRET_OK;
 	};
 
+	const size_t INVALID_GLOBAL_SLOT = (size_t)-1;
+
+	auto RESOLVE_OR_CREATE_GLOBAL_SLOT = [&](VMValue nameValue, size_t& outSlot) -> bool {
+		if (!IsString(nameValue))
+		{
+			RuntimeError("Global variable name must be a string.");
+			return false;
+		}
+
+		StringValue* stringValue = static_cast<StringValue*>(nameValue.value);
+		size_t cachedSlot = stringValue->cachedGlobalSlot;
+		if (cachedSlot != INVALID_GLOBAL_SLOT && cachedSlot < globalSlots.size())
+		{
+			outSlot = cachedSlot;
+			return true;
+		}
+
+		auto it = globalNameToSlot.find(stringValue->value);
+		if (it == globalNameToSlot.end())
+		{
+			size_t newSlot = globalSlots.size();
+			globalNameToSlot[stringValue->value] = newSlot;
+			globalSlots.push_back(VMValue());
+			stringValue->cachedGlobalSlot = newSlot;
+			outSlot = newSlot;
+			return true;
+		}
+
+		outSlot = it->second;
+		if (outSlot >= globalSlots.size())
+		{
+			globalSlots.resize(outSlot + 1);
+		}
+		stringValue->cachedGlobalSlot = outSlot;
+		return true;
+	};
+
+	auto RESOLVE_EXISTING_GLOBAL_SLOT = [&](VMValue nameValue, size_t& outSlot) -> bool {
+		if (!IsString(nameValue))
+		{
+			RuntimeError("Global variable name must be a string.");
+			return false;
+		}
+
+		StringValue* stringValue = static_cast<StringValue*>(nameValue.value);
+		size_t cachedSlot = stringValue->cachedGlobalSlot;
+		if (cachedSlot != INVALID_GLOBAL_SLOT && cachedSlot < globalSlots.size())
+		{
+			outSlot = cachedSlot;
+			return true;
+		}
+
+		auto it = globalNameToSlot.find(stringValue->value);
+		if (it == globalNameToSlot.end())
+		{
+			RuntimeError("Undefined global variable '%s'.", stringValue->value.c_str());
+			return false;
+		}
+
+		outSlot = it->second;
+		if (outSlot >= globalSlots.size())
+		{
+			RuntimeError("Undefined global variable '%s'.", stringValue->value.c_str());
+			return false;
+		}
+
+		stringValue->cachedGlobalSlot = outSlot;
+		return true;
+	};
+
 	while (chunk->code)
 	{
 		if (ip >= chunk->code + chunk->count)
@@ -242,14 +312,13 @@ InterpretResult VM::Run()
 		switch (opCode)
 		{
 			case OP_CONSTANT:
-			{
-				VMValue value = READ_CONSTANT();
-				Push(value);
-				break;
-			}
 			case OP_CONSTANT_LONG:
 			{
-				VMValue value = READ_LONG_CONSTANT();
+				VMValue value;
+				if (opCode == OP_CONSTANT)
+					value = READ_CONSTANT();
+				else
+					value = READ_LONG_CONSTANT();
 				Push(value);
 				break;
 			}
@@ -323,27 +392,57 @@ InterpretResult VM::Run()
 				break;
 			}
 			case OP_DEFINE_GLOBAL:
-			{
-				VMValue nameValue = READ_CONSTANT();
-				if (!IsString(nameValue))
-				{
-					RuntimeError("Global variable name must be a string.");
-					return INTERPRET_RUNTIME_ERROR;
-				}
-				std::string name = static_cast<std::string>(*nameValue.value);
-				globals[name] = Pop();
-				break;
-			}
 			case OP_DEFINE_GLOBAL_LONG:
 			{
-				VMValue nameValue = READ_LONG_CONSTANT();
-				if (!IsString(nameValue))
+				VMValue nameValue;
+				if (opCode == OP_DEFINE_GLOBAL)
+					nameValue = READ_CONSTANT();
+				else
+					nameValue = READ_LONG_CONSTANT();
+
+				size_t slot;
+				if (!RESOLVE_OR_CREATE_GLOBAL_SLOT(nameValue, slot))
 				{
-					RuntimeError("Global variable name must be a string.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				std::string name = static_cast<std::string>(*nameValue.value);
-				globals[name] = Pop();
+
+				globalSlots[slot] = Pop();
+				break;
+			}
+			case OP_GET_GLOBAL:
+			case OP_GET_GLOBAL_LONG:
+			{
+				VMValue nameValue;
+				if (opCode == OP_GET_GLOBAL)
+					nameValue = READ_CONSTANT();
+				else
+					nameValue = READ_LONG_CONSTANT();
+
+				size_t slot;
+				if (!RESOLVE_EXISTING_GLOBAL_SLOT(nameValue, slot))
+				{
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				Push(globalSlots[slot]);
+				break;
+			}
+			case OP_SET_GLOBAL:
+			case OP_SET_GLOBAL_LONG:
+			{
+				VMValue nameValue;
+				if (opCode == OP_SET_GLOBAL)
+					nameValue = READ_CONSTANT();
+				else
+					nameValue = READ_LONG_CONSTANT();
+
+				size_t slot;
+				if (!RESOLVE_EXISTING_GLOBAL_SLOT(nameValue, slot))
+				{
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				globalSlots[slot] = Peek(0);
 				break;
 			}
 			case OP_RETURN:
