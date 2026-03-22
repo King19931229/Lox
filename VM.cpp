@@ -420,7 +420,6 @@ InterpretResult VM::Run()
 			case OP_PRINT:
 			{
 				VMValue value = Pop();
-				// Print runtime output to std::cout so RunVMWithCapture can capture it
 				chunk->PrintValueStdout(value);
 				std::cout << std::endl;
 				break;

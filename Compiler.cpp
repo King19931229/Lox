@@ -56,7 +56,11 @@ void Compiler::Delclaration()
 {
 	if (Match(VAR))
 	{
-		VarDeclaration();
+		VarDeclaration(false);
+	}
+	else if(Match(FINAL))
+	{
+		FinalVarDeclaration();
 	}
 	else
 	{
@@ -111,9 +115,9 @@ void Compiler::Statement()
 	}
 }
 
-void Compiler::VarDeclaration()
+void Compiler::VarDeclaration(bool constant)
 {
-	uint32_t global = ParseVariable("Expect variable name.");
+	uint32_t global = ParseVariable("Expect variable name.", constant);
 	if (Match(EQUAL))
 	{
 		Expression();
@@ -123,7 +127,13 @@ void Compiler::VarDeclaration()
 		EmitByte(OP_NIL);
 	}
 	Consume(SEMICOLON, "Expect ';' after variable declaration.");
-	DefineVariable(global);
+	DefineVariable(global, constant);
+}
+
+void Compiler::FinalVarDeclaration()
+{
+	Consume(VAR, "Expect 'var' keyword for final variable declaration.");
+	VarDeclaration(true);
 }
 
 void Compiler::PrintStatement()
@@ -336,23 +346,31 @@ void Compiler::NamedVariable(bool canAssign)
 {
 	OpCode getOp, setOp;
 	int localIndex = ResolveLocal(parser.previous);
-	uint32_t arg;
+	bool constant = false;
+	uint32_t arg = 0;
 
 	if (localIndex != -1)
 	{
 		arg = (uint32_t)localIndex;
+		constant = locals[localIndex].constant;
 		getOp = arg <= 0xFF ? OP_GET_LOCAL : OP_GET_LOCAL_LONG;
 		setOp = arg <= 0xFF ? OP_SET_LOCAL : OP_SET_LOCAL_LONG;
 	}
 	else
 	{
 		arg = IdentifierConstant(parser.previous);
+		constant = globalConstants[arg];
 		getOp = arg <= 0xFF ? OP_GET_GLOBAL : OP_GET_GLOBAL_LONG;
 		setOp = arg <= 0xFF ? OP_SET_GLOBAL : OP_SET_GLOBAL_LONG;
 	}
 
 	if (canAssign && Match(EQUAL))
 	{
+		if (constant)
+		{
+			Error("Cannot assign to a final variable.");
+		}
+
 		Expression();
 		if (arg <= 0xFF)
 		{
@@ -509,10 +527,10 @@ void Compiler::EmitConstant(VMValue value)
 
 // --- Variable Helpers ---
 
-uint32_t Compiler::ParseVariable(const std::string& errorMessage)
+uint32_t Compiler::ParseVariable(const std::string& errorMessage, bool constant)
 {
 	Consume(IDENTIFIER, errorMessage.c_str());
-	DeclareVariable();
+	DeclareVariable(constant);
 	if (scopeDepth > 0)
 	{
 		return UINT8_MAX;
@@ -536,14 +554,20 @@ uint32_t Compiler::IdentifierConstant(const Token& name)
 	return MakeConstant(VMValue::Create(StringValue::CreateRaw(name.lexeme)));
 }
 
-void Compiler::DefineVariable(uint32_t global)
+void Compiler::DefineVariable(uint32_t global, bool constant)
 {
+	// Define a local variable. Mark it defined at this scope depth and emit no bytecode.
 	if (scopeDepth > 0)
 	{
-		// Local variable. No bytecode emitted.
+		// Local variable. Mark it defined at this scope depth and emit no bytecode.
+		if (!locals.empty())
+		{
+			locals.back().depth = scopeDepth;
+		}
 		return;
 	}
 
+	// Define a global variable. Emit bytecode to define it at the top level.
 	if (global <= 0xFF)
 	{
 		EmitBytes(OP_DEFINE_GLOBAL, (uint8_t)global);
@@ -555,19 +579,21 @@ void Compiler::DefineVariable(uint32_t global)
 			(uint8_t)((global >> 8) & 0xFF),
 			(uint8_t)(global & 0xFF));
 	}
+
+	globalConstants[global] = constant;
 }
 
-void Compiler::DeclareVariable()
+void Compiler::DeclareVariable(bool constant)
 {
 	if (scopeDepth == 0)
 	{
 		return;
 	}
 	const Token& name = parser.previous;
-	AddLocal(name);
+	AddLocal(name, constant);
 }
 
-void Compiler::AddLocal(const Token& name)
+void Compiler::AddLocal(const Token& name, bool constant)
 {
 	if (locals.size() >= LOCAL_MAX)
 	{
@@ -588,7 +614,8 @@ void Compiler::AddLocal(const Token& name)
 	}
 	locals.push_back(Local{});
 	locals.back().name = name;
-	locals.back().depth = scopeDepth;
+	locals.back().constant = constant;
+	locals.back().depth = -1;
 }
 
 int Compiler::ResolveLocal(const Token& name)
@@ -597,6 +624,15 @@ int Compiler::ResolveLocal(const Token& name)
 	{
 		if (locals[(size_t)index].name.lexeme == name.lexeme)
 		{
+			if (locals[(size_t)index].depth == -1)
+			{
+				// This error is only relevant if we allow referencing a local variable in its own initializer, which we currently don't. 
+				// If we add that feature in the future, we can uncomment this error to prevent it.
+				// ErrorAt(&parser.previous, "Cannot read local variable in its own initializer.");
+				// Skip this inner local because it's declared but not yet initialized.
+				// This lets the initializer expression resolve an outer variable with the same name.
+				continue;
+			}
 			return index;
 		}
 	}

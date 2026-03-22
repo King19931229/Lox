@@ -260,9 +260,16 @@ int main(int argc, char* argv[])
 {
 	/*VM& vm = VM::GetInstance();
 	vm.Init();
-	vm.Interpret("{var a = 11; var b = 22; var c = a + b; var d = c;}");
-	vm.Free();
-	return 0;*/
+	vm.Interpret(R"(
+	final var a = 10;
+	{
+		final var a = 0;
+		a = 20;
+	}	
+	)");
+	vm.Free();*/
 
 	TestUnit::RunVMTest();
+
+	return 0;
 }

@@ -143,7 +143,6 @@ struct Chunk
 	int32_t LocalInstruction(const char* name, int32_t offset);
 	int32_t LocalLongInstruction(const char* name, int32_t offset);
 	void PrintValue(VMValue value);
-	// Print value to std::cout (used at runtime so it can be captured)
 	void PrintValueStdout(VMValue value);
 	int32_t ConstantInstruction(const char* name, int32_t offset);
 	int32_t ConstantLongInstruction(const char* name, int32_t offset);

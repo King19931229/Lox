@@ -49,10 +49,14 @@ private:
 	{
 		Token name;
 		int depth = -1;
+		bool constant = false;
 	};
 
 	std::vector<Local> locals;
 	int scopeDepth = 0;
+
+	// Map if the global is constant
+	std::unordered_map<uint32_t, bool> globalConstants;
 
 	std::vector<Token> tokens;
 	size_t nextToken = 0;
@@ -64,7 +68,8 @@ private:
 	void Advance();
 	void Delclaration();
 	void Statement();
-	void VarDeclaration();
+	void VarDeclaration(bool constant);
+	void FinalVarDeclaration();
 	void PrintStatement();
 	void ExpressionStatement();
 	void Expression();
@@ -106,12 +111,12 @@ private:
 	void EmitConstant(VMValue value);
 
 	// --- Variable Helpers ---
-	uint32_t ParseVariable(const std::string& errorMessage);
+	uint32_t ParseVariable(const std::string& errorMessage, bool constant);
 	uint32_t MakeConstant(VMValue value);
 	uint32_t IdentifierConstant(const Token& name);
-	void DefineVariable(uint32_t global);
-	void DeclareVariable();
-	void AddLocal(const Token& name);
+	void DefineVariable(uint32_t global, bool constant);
+	void DeclareVariable(bool constant);
+	void AddLocal(const Token& name, bool constant);
 	int ResolveLocal(const Token& name);
 
 	// --- Error Handling ---

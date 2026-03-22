@@ -324,10 +324,52 @@ VMRunResult RunVMWithCapture(const std::string& source)
 	std::ostringstream oss;
 	std::cout.rdbuf(oss.rdbuf());
 
+	FILE* stderrCapture = nullptr;
+	int savedStderrFd = -1;
+	std::string stderrOutput;
+
+#ifdef _WIN32
+	if (tmpfile_s(&stderrCapture) == 0 && stderrCapture != nullptr)
+	{
+		savedStderrFd = _dup(_fileno(stderr));
+		if (savedStderrFd != -1)
+		{
+			fflush(stderr);
+			_dup2(_fileno(stderrCapture), _fileno(stderr));
+		}
+	}
+#endif
+
+	Lox::GetInstance().ResetError();
 	runResult.result = vm.Interpret(source.c_str());
 
+	std::cout.flush();
+	fflush(stderr);
+
+#ifdef _WIN32
+	if (savedStderrFd != -1)
+	{
+		_dup2(savedStderrFd, _fileno(stderr));
+		_close(savedStderrFd);
+	}
+
+	if (stderrCapture != nullptr)
+	{
+		std::ostringstream errStream;
+		rewind(stderrCapture);
+		char buffer[256];
+		size_t bytesRead = 0;
+		while ((bytesRead = std::fread(buffer, 1, sizeof(buffer), stderrCapture)) > 0)
+		{
+			errStream.write(buffer, (std::streamsize)bytesRead);
+		}
+		stderrOutput = errStream.str();
+		fclose(stderrCapture);
+	}
+#endif
+
 	std::cout.rdbuf(oldCout);
-	runResult.output = oss.str();
+	runResult.output = oss.str() + stderrOutput;
 
 	return runResult;
 }
@@ -609,9 +651,15 @@ void TestUnit::RunVMTest()
 		{ "var a = 1; { a = 4; } print a;", "4\n" },
 		{ "{ var a = 1; a = a + 4; print a; }", "5\n" },
 		{ "var outer = 2; { var inner = 3; print outer + inner; }", "5\n" },
+		// 变量声明时可以访问同名的外层变量
+		{ "var a = 10; { var a = a + 5; { var a = a + 10; print a; } }", "25\n" },
 
 		// 错误路径：运行时错误
 		{ "print 1 / 0;", "Division by zero.", INTERPRET_RUNTIME_ERROR },
+
+		// 错误路径：final 变量不能重新赋值
+		{ "final var a = 1; a = 2;", "Cannot assign to a final variable.", INTERPRET_COMPILE_ERROR },
+		{ "{ final var a = 1; a = 2; }", "Cannot assign to a final variable.", INTERPRET_COMPILE_ERROR },
 	};
 
 #ifdef _WIN32

@@ -48,6 +48,7 @@
 	TOKEN(THIS,           "this")        /* this */ \
 	TOKEN(TRUE,           "true")        /* true */ \
 	TOKEN(VAR,            "var")         /* var */ \
+	TOKEN(FINAL,          "final")       /* final */ \
 	TOKEN(WHILE,          "while")       /* while */ \
 	TOKEN(BREAK,          "break")       /* break */ \
 	TOKEN(END_OF_FILE,    "EOF")         /* end of file */ \
