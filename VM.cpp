@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <cstdarg>
+#include <iostream>
 
 // #define DEBUG_TRACE_EXECUTION
 
@@ -162,6 +163,14 @@ InterpretResult VM::Run()
 		return chunk->constants.values[constantIndex];
 	};
 
+	auto READ_LOCAL_SLOT = [&]() -> uint32_t {
+		return (uint32_t)READ_BYTE();
+	};
+
+	auto READ_LONG_LOCAL_SLOT = [&]() -> uint32_t {
+		return ((uint32_t)READ_BYTE() << 16) | ((uint32_t)READ_BYTE() << 8) | (uint32_t)READ_BYTE();
+	};
+
 	auto BINARY_OP = [&](OpCode op) {
 		VMValue b = Pop();
 		VMValue a = Pop();
@@ -175,23 +184,47 @@ InterpretResult VM::Run()
 		switch (op)
 		{
 			case OP_ADD:
-				Push(VMValue::Create(ValAdd(a.value, b.value)));
+			{
+				Value* out = ValAdd(a.value, b.value);
+				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
+				Push(VMValue::Create(out));
 				break;
+			}
 			case OP_SUBTRACT:
-				Push(VMValue::Create(ValSub(a.value, b.value)));
+			{
+				Value* out = ValSub(a.value, b.value);
+				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
+				Push(VMValue::Create(out));
 				break;
+			}
 			case OP_MULTIPLY:
-				Push(VMValue::Create(ValMul(a.value, b.value)));
+			{
+				Value* out = ValMul(a.value, b.value);
+				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
+				Push(VMValue::Create(out));
 				break;
+			}
 			case OP_DIVIDE:
-				Push(VMValue::Create(ValDiv(a.value, b.value)));
+			{
+				Value* out = ValDiv(a.value, b.value);
+				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
+				Push(VMValue::Create(out));
 				break;
-			case OP_GERATER:
-				Push(VMValue::Create(ValGreater(a.value, b.value)));
+			}
+			case OP_GREATER:
+			{
+				Value* out = ValGreater(a.value, b.value);
+				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
+				Push(VMValue::Create(out));
 				break;
+			}
 			case OP_LESS:
-				Push(VMValue::Create(ValLess(a.value, b.value)));
+			{
+				Value* out = ValLess(a.value, b.value);
+				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
+				Push(VMValue::Create(out));
 				break;
+			}
 			default:
 				// Handle unknown operation (could throw an exception or abort)
 				RuntimeError("Unknown binary operation!\n");
@@ -358,7 +391,7 @@ InterpretResult VM::Run()
 			case OP_SUBTRACT:
 			case OP_MULTIPLY:
 			case OP_DIVIDE:
-			case OP_GERATER:
+			case OP_GREATER:
 			case OP_LESS:
 			{
 				InterpretResult result = BINARY_OP((OpCode)opCode);
@@ -387,8 +420,14 @@ InterpretResult VM::Run()
 			case OP_PRINT:
 			{
 				VMValue value = Pop();
-				chunk->PrintValue(value);
-				printf("\n");
+				// Print runtime output to std::cout so RunVMWithCapture can capture it
+				chunk->PrintValueStdout(value);
+				std::cout << std::endl;
+				break;
+			}
+			case OP_POP:
+			{
+				Pop();
 				break;
 			}
 			case OP_DEFINE_GLOBAL:
@@ -443,6 +482,30 @@ InterpretResult VM::Run()
 				}
 
 				globalSlots[slot] = Peek(0);
+				break;
+			}
+			case OP_GET_LOCAL:
+			case OP_GET_LOCAL_LONG:
+			{
+				uint32_t slot = (opCode == OP_GET_LOCAL) ? READ_LOCAL_SLOT() : READ_LONG_LOCAL_SLOT();
+				if (stacks == nullptr || slot >= (uint32_t)(stackTop - stacks))
+				{
+					RuntimeError("Local slot out of range.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Push(stacks[slot]);
+				break;
+			}
+			case OP_SET_LOCAL:
+			case OP_SET_LOCAL_LONG:
+			{
+				uint32_t slot = (opCode == OP_SET_LOCAL) ? READ_LOCAL_SLOT() : READ_LONG_LOCAL_SLOT();
+				if (stacks == nullptr || slot >= (uint32_t)(stackTop - stacks))
+				{
+					RuntimeError("Local slot out of range.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				stacks[slot] = Peek(0);
 				break;
 			}
 			case OP_RETURN:

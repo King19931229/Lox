@@ -44,7 +44,7 @@ struct IExprVisitor
 template<typename R>
 struct ExprVisitor : public IExprVisitor
 {
-	R result; // 用于存储访问结果
+	R result; // 鐢ㄤ簬瀛樺偍璁块棶缁撴灉
 	
 	R VisitExpr(const Expr* Expr);
 	
@@ -90,7 +90,7 @@ struct Expr
 	template <typename T>
 	T* As() const
 	{
-		return static_cast<T>(this);
+		return static_cast<T*>(const_cast<Expr*>(this));
 	}
 
 	template <typename T>
@@ -99,7 +99,7 @@ struct Expr
 		return static_cast<T*>(this);
 	}
 
-	// Accept 方法现在接受 IExprVisitor
+	// Accept 鏂规硶鐜板湪鎺ュ彈 IExprVisitor
 	virtual void Accept(IExprVisitor& visitor) const = 0;
 };
 

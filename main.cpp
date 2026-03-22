@@ -11,6 +11,7 @@ int LegacyMain(int argc, char* argv[])
 {
 	/*
 	TestUnit::RunExpressionInterpreterTest();
+	TestUnit::RunVMTest();
 	TestUnit::RunResolverTest();
 	TestUnit::RunStatementInterpreterTest();
 	TestUnit::RunFunctionInterpreterTest();
@@ -257,9 +258,11 @@ void TestChunk()
 
 int main(int argc, char* argv[])
 {
-	VM& vm = VM::GetInstance();
+	/*VM& vm = VM::GetInstance();
 	vm.Init();
-	vm.Interpret("var a = (-1 + 2) * 3 - -4; a = a * a; print(a + 1);");
+	vm.Interpret("{var a = 11; var b = 22; var c = a + b; var d = c;}");
 	vm.Free();
-	return 0;
+	return 0;*/
+
+	TestUnit::RunVMTest();
 }

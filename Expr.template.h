@@ -22,7 +22,7 @@ struct Expr
 		return static_cast<T*>(this);
 	}
 
-	// Accept 方法现在接受 IExprVisitor
+	// Accept 鏂规硶鐜板湪鎺ュ彈 IExprVisitor
 	virtual void Accept(IExprVisitor& visitor) const = 0;
 };
 

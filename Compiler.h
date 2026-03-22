@@ -1,12 +1,13 @@
 #pragma once
 #include "Scanner.h"
 #include "Chunk.h"
+#include <vector>
 
 class Compiler
 {
+protected:
 public:
 	bool Compile(const char* source, Chunk* outChunk);
-
 private:
 	enum Precedence
 	{
@@ -42,9 +43,22 @@ private:
 		bool panicMode = false;
 	} parser;
 
+	// Local variable tracking (adapted from C implementation)
+	static constexpr uint32_t LOCAL_MAX = 0xFFFFFF;
+	struct Local
+	{
+		Token name;
+		int depth = -1;
+	};
+
+	std::vector<Local> locals;
+	int scopeDepth = 0;
+
 	std::vector<Token> tokens;
 	size_t nextToken = 0;
 	Chunk* compilingChunk = nullptr;
+
+	void Init();
 
 	// --- Core Parsing Flow ---
 	void Advance();
@@ -54,6 +68,9 @@ private:
 	void PrintStatement();
 	void ExpressionStatement();
 	void Expression();
+	void BeginScope();
+	void Block();
+	void EndScope();
 	void ParsePrecedence(Precedence precedence);
 	void Synchronize();
 	void EndCompiler();
@@ -93,6 +110,9 @@ private:
 	uint32_t MakeConstant(VMValue value);
 	uint32_t IdentifierConstant(const Token& name);
 	void DefineVariable(uint32_t global);
+	void DeclareVariable();
+	void AddLocal(const Token& name);
+	int ResolveLocal(const Token& name);
 
 	// --- Error Handling ---
 	void Error(const char* message);

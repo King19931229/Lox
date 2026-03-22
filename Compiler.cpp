@@ -2,6 +2,12 @@
 
 #define DEBUG_PRINT_CODE
 
+void Compiler::Init()
+{
+	locals.clear();
+	scopeDepth = 0;
+}
+
 bool Compiler::Compile(const char* source, Chunk* outChunk)
 {
 	Scanner scanner(source);
@@ -10,6 +16,9 @@ bool Compiler::Compile(const char* source, Chunk* outChunk)
 	{
 		return false;
 	}
+
+	Init();
+
 	compilingChunk = outChunk;
 
 	Advance();
@@ -60,11 +69,41 @@ void Compiler::Delclaration()
 	}
 }
 
+void Compiler::BeginScope()
+{
+	scopeDepth++;
+}
+
+void Compiler::Block()
+{
+	while (!Check(RIGHT_BRACE) && !Check(END_OF_FILE))
+	{
+		Delclaration();
+	}
+	Consume(RIGHT_BRACE, "Expect '}' after block.");
+}
+
+void Compiler::EndScope()
+{
+	scopeDepth--;
+	while (!locals.empty() && locals.back().depth > scopeDepth)
+	{
+		EmitByte(OP_POP);
+		locals.pop_back();
+	}
+}
+
 void Compiler::Statement()
 {
 	if (Match(PRINT))
 	{
 		PrintStatement();
+	}
+	else if (Match(LEFT_BRACE))
+	{
+		BeginScope();
+		Block();	
+		EndScope();
 	}
 	else
 	{
@@ -249,10 +288,10 @@ void Compiler::Binary()
 		case MINUS:         EmitByte(OP_SUBTRACT);  break;
 		case STAR:          EmitByte(OP_MULTIPLY);  break;
 		case SLASH:         EmitByte(OP_DIVIDE);    break;
-		case GREATER:       EmitByte(OP_GERATER);   break;
-		case GREATER_EQUAL: EmitByte(OP_GERATER); EmitByte(OP_NOT); break;
+		case GREATER:       EmitByte(OP_GREATER);   break;
+		case GREATER_EQUAL: EmitByte(OP_LESS);    EmitByte(OP_NOT); break;
 		case LESS:          EmitByte(OP_LESS);      break;
-		case LESS_EQUAL:    EmitByte(OP_LESS);    EmitByte(OP_NOT); break;
+		case LESS_EQUAL:    EmitByte(OP_GREATER); EmitByte(OP_NOT); break;
 		default:
 			// Unreachable.
 			break;
@@ -295,38 +334,50 @@ void Compiler::Equality()
 
 void Compiler::NamedVariable(bool canAssign)
 {
-	uint32_t arg = IdentifierConstant(parser.previous);
-	bool isAssignment = false;
-	if (canAssign && Match(EQUAL))
+	OpCode getOp, setOp;
+	int localIndex = ResolveLocal(parser.previous);
+	uint32_t arg;
+
+	if (localIndex != -1)
 	{
-		isAssignment = true;
-		Expression();
+		arg = (uint32_t)localIndex;
+		getOp = arg <= 0xFF ? OP_GET_LOCAL : OP_GET_LOCAL_LONG;
+		setOp = arg <= 0xFF ? OP_SET_LOCAL : OP_SET_LOCAL_LONG;
+	}
+	else
+	{
+		arg = IdentifierConstant(parser.previous);
+		getOp = arg <= 0xFF ? OP_GET_GLOBAL : OP_GET_GLOBAL_LONG;
+		setOp = arg <= 0xFF ? OP_SET_GLOBAL : OP_SET_GLOBAL_LONG;
 	}
 
-	if (arg <= 0xFF)
+	if (canAssign && Match(EQUAL))
 	{
-		uint8_t index = (uint8_t)arg;
-		if (isAssignment)
+		Expression();
+		if (arg <= 0xFF)
 		{
-			EmitBytes(OP_SET_GLOBAL, index);
+			EmitBytes(setOp, (uint8_t)arg);
 		}
 		else
 		{
-			EmitBytes(OP_GET_GLOBAL, index);
+			EmitBytes(setOp,
+				(uint8_t)((arg >> 16) & 0xFF),
+				(uint8_t)((arg >> 8) & 0xFF),
+				(uint8_t)(arg & 0xFF));
 		}
 	}
 	else
 	{
-		uint8_t b1 = (uint8_t)((arg >> 16) & 0xFF);
-		uint8_t b2 = (uint8_t)((arg >> 8) & 0xFF);
-		uint8_t b3 = (uint8_t)(arg & 0xFF);
-		if (isAssignment)
+		if (arg <= 0xFF)
 		{
-			EmitBytes(OP_SET_GLOBAL_LONG, b1, b2, b3);
+			EmitBytes(getOp, (uint8_t)arg);
 		}
 		else
 		{
-			EmitBytes(OP_GET_GLOBAL_LONG, b1, b2, b3);
+			EmitBytes(getOp,
+				(uint8_t)((arg >> 16) & 0xFF),
+				(uint8_t)((arg >> 8) & 0xFF),
+				(uint8_t)(arg & 0xFF));
 		}
 	}
 }
@@ -461,6 +512,11 @@ void Compiler::EmitConstant(VMValue value)
 uint32_t Compiler::ParseVariable(const std::string& errorMessage)
 {
 	Consume(IDENTIFIER, errorMessage.c_str());
+	DeclareVariable();
+	if (scopeDepth > 0)
+	{
+		return UINT8_MAX;
+	}
 	return IdentifierConstant(parser.previous);
 }
 
@@ -482,6 +538,12 @@ uint32_t Compiler::IdentifierConstant(const Token& name)
 
 void Compiler::DefineVariable(uint32_t global)
 {
+	if (scopeDepth > 0)
+	{
+		// Local variable. No bytecode emitted.
+		return;
+	}
+
 	if (global <= 0xFF)
 	{
 		EmitBytes(OP_DEFINE_GLOBAL, (uint8_t)global);
@@ -493,6 +555,52 @@ void Compiler::DefineVariable(uint32_t global)
 			(uint8_t)((global >> 8) & 0xFF),
 			(uint8_t)(global & 0xFF));
 	}
+}
+
+void Compiler::DeclareVariable()
+{
+	if (scopeDepth == 0)
+	{
+		return;
+	}
+	const Token& name = parser.previous;
+	AddLocal(name);
+}
+
+void Compiler::AddLocal(const Token& name)
+{
+	if (locals.size() >= LOCAL_MAX)
+	{
+		Error("Too many local variables in function.");
+		return;
+	}
+	for (int32_t index = (int32_t)locals.size() - 1; index >= 0; --index)
+	{
+		const Local& local = locals[(size_t)index];
+		if (local.depth != -1 && local.depth < scopeDepth)
+		{
+			break;
+		}
+		if (local.name.lexeme == name.lexeme)
+		{
+			Error("Variable with this name already declared in this scope.");
+		}
+	}
+	locals.push_back(Local{});
+	locals.back().name = name;
+	locals.back().depth = scopeDepth;
+}
+
+int Compiler::ResolveLocal(const Token& name)
+{
+	for (int32_t index = (int32_t)locals.size() - 1; index >= 0; --index)
+	{
+		if (locals[(size_t)index].name.lexeme == name.lexeme)
+		{
+			return index;
+		}
+	}
+	return -1;
 }
 
 // --- Error Handling ---

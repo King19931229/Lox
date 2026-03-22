@@ -24,12 +24,17 @@ enum OpCode
 	OP_NOT,
 	OP_DEFINE_GLOBAL,
 	OP_DEFINE_GLOBAL_LONG,
+	OP_GET_LOCAL,
+	OP_GET_LOCAL_LONG,
+	OP_SET_LOCAL,
+	OP_SET_LOCAL_LONG,
+	OP_POP,
 	OP_GET_GLOBAL,
 	OP_GET_GLOBAL_LONG,
 	OP_SET_GLOBAL,
 	OP_SET_GLOBAL_LONG,
 	OP_EQUAL,
-	OP_GERATER,
+	OP_GREATER,
 	OP_LESS,
 	OP_RETURN,
 };
@@ -131,8 +136,15 @@ struct Chunk
 	int32_t AddConstant(VMValue value);
 	void Free();
 
+	// Zero-operand instructions simply print the instruction name and return the offset of the next instruction.
 	int32_t SimpleInstruction(const char* name, int32_t offset);
+	// One-byte operand instructions print the instruction name and the operand, then return the offset of the next instruction.
+	int32_t ByteInstruction(const char* name, int32_t offset);
+	int32_t LocalInstruction(const char* name, int32_t offset);
+	int32_t LocalLongInstruction(const char* name, int32_t offset);
 	void PrintValue(VMValue value);
+	// Print value to std::cout (used at runtime so it can be captured)
+	void PrintValueStdout(VMValue value);
 	int32_t ConstantInstruction(const char* name, int32_t offset);
 	int32_t ConstantLongInstruction(const char* name, int32_t offset);
 	int32_t DisassembleInstruction(int32_t offset);

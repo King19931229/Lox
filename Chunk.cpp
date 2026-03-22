@@ -1,6 +1,7 @@
 #include "Chunk.h"
 #include "VM.h"
 #include <cstdio>
+#include <iostream>
 
 VMValue VMValue::Create(Value* value)
 {
@@ -104,6 +105,29 @@ int32_t Chunk::SimpleInstruction(const char* name, int32_t offset)
 	return offset + 1;
 }
 
+int32_t Chunk::ByteInstruction(const char* name, int32_t offset)
+{
+	uint8_t operand = code[offset + 1];
+	printf("%-16s %4d\n", name, operand);
+	return offset + 2;
+}
+
+int32_t Chunk::LocalInstruction(const char* name, int32_t offset)
+{
+	uint8_t operand = code[offset + 1];
+	printf("%-16s %4d\n", name, operand);
+	return offset + 2;
+}
+
+int32_t Chunk::LocalLongInstruction(const char* name, int32_t offset)
+{
+	uint32_t operand = (uint32_t)(code[offset + 1] << 16);
+	operand |= (uint32_t)(code[offset + 2] << 8);
+	operand |= (uint32_t)(code[offset + 3]);
+	printf("%-16s %4d\n", name, operand);
+	return offset + 4;
+}
+
 void Chunk::PrintValue(VMValue value)
 {
 	if (!value.value)
@@ -114,6 +138,17 @@ void Chunk::PrintValue(VMValue value)
 	// Convert to std::string via Value's operator std::string()
 	std::string s = static_cast<std::string>(*value.value);
 	printf("%s", s.c_str());
+}
+
+void Chunk::PrintValueStdout(VMValue value)
+{
+	if (!value.value)
+	{
+		std::cout << "nil";
+		return;
+	}
+	std::string s = static_cast<std::string>(*value.value);
+	std::cout << s;
 }
 
 int32_t Chunk::ConstantInstruction(const char* name, int32_t offset)
@@ -186,14 +221,24 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return ConstantInstruction("OP_SET_GLOBAL", offset);
 		case OP_SET_GLOBAL_LONG:
 			return ConstantLongInstruction("OP_SET_GLOBAL_LONG", offset);
+		case OP_GET_LOCAL:
+			return LocalInstruction("OP_GET_LOCAL", offset);
+		case OP_GET_LOCAL_LONG:
+			return LocalLongInstruction("OP_GET_LOCAL_LONG", offset);
+		case OP_SET_LOCAL:
+			return LocalInstruction("OP_SET_LOCAL", offset);
+		case OP_SET_LOCAL_LONG:
+			return LocalLongInstruction("OP_SET_LOCAL_LONG", offset);
 		case OP_EQUAL:
 			return SimpleInstruction("OP_EQUAL", offset);
-		case OP_GERATER:
-			return SimpleInstruction("OP_GERATER", offset);
+		case OP_GREATER:
+			return SimpleInstruction("OP_GREATER", offset);
 		case OP_LESS:
 			return SimpleInstruction("OP_LESS", offset);
 		case OP_RETURN:
 			return SimpleInstruction("OP_RETURN", offset);
+		case OP_POP:
+			return SimpleInstruction("OP_POP", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;
