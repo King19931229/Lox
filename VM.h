@@ -34,7 +34,7 @@ protected:
 	void Push(VMValue value);
 	InterpretResult Negate();
 	VMValue Pop();
-	VMValue Peek(int distance);
+	VMValue Peek(int32_t distance);
 
 	bool IsNumber(VMValue value);
 	bool IsFalsey(VMValue value);

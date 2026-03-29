@@ -103,6 +103,22 @@ void Compiler::Statement()
 	{
 		PrintStatement();
 	}
+	else if (Match(IF))
+	{
+		IfStatement();
+	}
+	else if (Match(WHILE))
+	{
+		WhileStatement();
+	}
+	else if (Match(BREAK))
+	{
+		BreakStatement();
+	}
+	else if (Match(FOR))
+	{
+		ForStatement();
+	}
 	else if (Match(LEFT_BRACE))
 	{
 		BeginScope();
@@ -136,6 +152,114 @@ void Compiler::FinalVarDeclaration()
 	VarDeclaration(true);
 }
 
+void Compiler::IfStatement()
+{
+	Consume(LEFT_PAREN, "Expect '(' after 'if'.");
+	Expression();
+	Consume(RIGHT_PAREN, "Expect ')' after condition.");
+	int32_t thenJump = EmitJump(OP_JUMP_IF_FALSE);
+	EmitByte(OP_POP);
+	Statement();
+	int32_t elseJump = EmitJump(OP_JUMP);
+	PatchJump(thenJump);
+	EmitByte(OP_POP);
+	if (Match(ELSE))
+	{
+		Statement();
+	}
+	PatchJump(elseJump);
+}
+
+void Compiler::WhileStatement()
+{
+	Consume(LEFT_PAREN, "Expect '(' after 'if'.");
+	int32_t outterLoopStart = currentLoopStart;
+	int32_t loopStart = (int32_t)compilingChunk->GetSize();
+	currentLoopStart = loopStart;
+	Expression();
+	Consume(RIGHT_PAREN, "Expect ')' after condition.");
+	int32_t exitJump = EmitJump(OP_JUMP_IF_FALSE);
+	EmitByte(OP_POP);
+	Statement();
+	EmitLoop(loopStart);
+	PatchJump(exitJump);
+	EmitByte(OP_POP);
+	// Patch any pending break jumps to jump here (after the loop).
+	PatchBreaks(loopStart);
+	currentLoopStart = outterLoopStart;
+}
+
+void Compiler::BreakStatement()
+{
+	Consume(SEMICOLON, "Expect ';' after 'break'.");
+	if (currentLoopStart == -1)
+	{
+		Error("Can't use 'break' outside of a loop.");
+		return;
+	}
+	int32_t breakJump = EmitJump(OP_JUMP);
+	breakJumpPatches[currentLoopStart].push_back(breakJump);
+}
+
+void Compiler::ForStatement()
+{
+	Consume(LEFT_PAREN, "Expect '(' after 'for'.");
+	BeginScope();
+	// Initializer.
+	if (Match(SEMICOLON))
+	{
+		// No initializer.
+	}
+	else if (Match(VAR))
+	{
+		VarDeclaration(false);
+	}
+	else
+	{
+		ExpressionStatement();
+	}
+	// Condition.
+	int32_t outterLoopStart = currentLoopStart;
+	int32_t loopStart = (int32_t)compilingChunk->GetSize();
+	currentLoopStart = loopStart;
+	if (Match(SEMICOLON))
+	{
+		// No condition.
+		EmitByte(OP_TRUE);
+	}
+	else
+	{
+		Expression();
+		Consume(SEMICOLON, "Expect ';' after loop condition.");
+	}
+	int32_t exitJump = EmitJump(OP_JUMP_IF_FALSE);
+	EmitByte(OP_POP);
+	int32_t bodyJump = EmitJump(OP_JUMP);
+	// Increment.
+	int32_t incrementStart = (int32_t)compilingChunk->GetSize();
+	if (Match(RIGHT_PAREN))
+	{
+		// No increment.
+	}
+	else
+	{
+		Expression();
+		// Pop the increment expression result so that it doesn't interfere with the loop body.
+		EmitByte(OP_POP);
+		Consume(RIGHT_PAREN, "Expect ')' after for clauses.");
+	}
+	EmitLoop(loopStart);
+	PatchJump(bodyJump);
+	Statement();
+	EmitLoop(incrementStart);
+	PatchJump(exitJump);
+	EmitByte(OP_POP);
+	// Patch any pending break jumps to jump here (after the loop).
+	PatchBreaks(loopStart);
+	currentLoopStart = outterLoopStart;
+	EndScope();
+}
+
 void Compiler::PrintStatement()
 {
 	Expression();
@@ -147,6 +271,8 @@ void Compiler::ExpressionStatement()
 {
 	Expression();
 	Consume(SEMICOLON, "Expect ';' after expression.");
+	// Expression statements don't leave a value on the stack, so pop it off.
+	EmitByte(OP_POP);
 }
 
 void Compiler::Expression()
@@ -342,6 +468,34 @@ void Compiler::Equality()
 	}
 }
 
+void Compiler::And()
+{
+	int32_t andJump = EmitJump(OP_JUMP_IF_FALSE);
+	EmitByte(OP_POP);
+	ParsePrecedence(Compiler::PREC_AND);
+	PatchJump(andJump);
+}
+
+void Compiler::Or()
+{
+	/*
+	EmitByte(OP_NOT);
+	int32_t orJump = EmitJump(OP_JUMP_IF_FALSE);
+	EmitByte(OP_POP);
+	ParsePrecedence(Compiler::PREC_OR);
+	int32_t endJump = EmitJump(OP_JUMP);
+	PatchJump(orJump);
+	EmitByte(OP_NOT);
+	PatchJump(endJump);
+	*/
+	int32_t orJump = EmitJump(OP_JUMP_IF_FALSE);
+	int32_t endJump = EmitJump(OP_JUMP);
+	PatchJump(orJump);
+	EmitByte(OP_POP);
+	ParsePrecedence(Compiler::PREC_OR);
+	PatchJump(endJump);
+}
+
 void Compiler::NamedVariable(bool canAssign)
 {
 	OpCode getOp, setOp;
@@ -478,7 +632,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[IDENTIFIER]    = { &Compiler::NamedVariable, nullptr,       PREC_NONE };
 		rules[STRING]        = { &Compiler::String,   nullptr,            PREC_NONE };
 		rules[NUMBER]        = { &Compiler::Number,   nullptr,            PREC_NONE };
-		rules[AND]           = { nullptr,             nullptr,            PREC_NONE };
+		rules[AND]           = { nullptr,             &Compiler::And,     PREC_AND };
 		rules[CLASS]         = { nullptr,             nullptr,            PREC_NONE };
 		rules[ELSE]          = { nullptr,             nullptr,            PREC_NONE };
 		rules[FALSE]         = { &Compiler::Literal,  nullptr,            PREC_NONE };
@@ -486,7 +640,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[FOR]           = { nullptr,             nullptr,            PREC_NONE };
 		rules[IF]            = { nullptr,             nullptr,            PREC_NONE };
 		rules[NIL]           = { &Compiler::Literal,  nullptr,            PREC_NONE };
-		rules[OR]            = { nullptr,             nullptr,            PREC_NONE };
+		rules[OR]            = { nullptr,             &Compiler::Or,      PREC_OR };
 		rules[PRINT]         = { nullptr,             nullptr,            PREC_NONE };
 		rules[RETURN]        = { nullptr,             nullptr,            PREC_NONE };
 		rules[SUPER]         = { nullptr,             nullptr,            PREC_NONE };
@@ -637,6 +791,50 @@ int Compiler::ResolveLocal(const Token& name)
 		}
 	}
 	return -1;
+}
+
+int32_t Compiler::EmitJump(uint8_t instruction)
+{
+	EmitByte(instruction);
+	EmitByte(0xFF);
+	EmitByte(0xFF);
+	return (int32_t)compilingChunk->GetSize() - 2;
+}
+
+void Compiler::PatchJump(int32_t offset)
+{
+	int32_t jump = compilingChunk->GetSize() - offset - 2;
+	if (jump > 0xFFFFFF)
+	{
+		Error("Too much code to jump over.");
+	}
+	compilingChunk->code[offset] = (uint8_t)((jump >> 8) & 0xFF);
+	compilingChunk->code[offset + 1] = (uint8_t)((jump >> 0) & 0xFF);
+}
+
+void Compiler::EmitLoop(int32_t loopStart)
+{
+	EmitByte(OP_LOOP);
+	int32_t offset = (int32_t)compilingChunk->GetSize() - loopStart + 2;
+	if (offset > 0xFFFF)
+	{
+		Error("Loop body too large.");
+	}
+	EmitByte((uint8_t)((offset >> 8) & 0xFF));
+	EmitByte((uint8_t)(offset & 0xFF));
+}
+
+void Compiler::PatchBreaks(int32_t loopStart)
+{
+	auto it = breakJumpPatches.find(loopStart);
+	if (it != breakJumpPatches.end())
+	{
+		for (uint32_t offset : it->second)
+		{
+			PatchJump(offset);
+		}
+		breakJumpPatches.erase(it);
+	}
 }
 
 // --- Error Handling ---

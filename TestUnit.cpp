@@ -645,6 +645,23 @@ void TestUnit::RunVMTest()
 		{ "var a = 1; a = a + 2; print a;", "3\n" },
 		{ "var first = \"L\"; var second = \"ox\"; print first + second;", "Lox\n" },
 
+		// VM: while / for loops
+		// VM: while / for loops (including aggressive break/nested cases)
+		{ "var i = 0; while (i < 3) { print i; i = i + 1; }", "0\n1\n2\n" },
+		{ "for (var j = 0; j < 2; j = j + 1) { print j; }", "0\n1\n" },
+		{ "var sum = 0; for (var k = 1; k <= 3; k = k + 1) { sum = sum + k; } print sum;", "6\n" },
+		// omitted clauses and simple breaks
+		{ "var x = 0; for (; x < 2; ) { print x; x = x + 1; }", "0\n1\n" },
+		{ "var c = 0; for (;;) { c = c + 1; if (c == 2) break; } print c;", "2\n" },
+		{ "var a = 0; while (a < 3) { a = a + 1; } print a;", "3\n" },
+		{ "var n = 0; while (n < 0) { print n; } print \"done\";", "done\n" },
+		// nested loops and break behavior
+		{ "for (var i = 0; i < 2; i = i + 1) { for (var j = 0; j < 2; j = j + 1) { print \"inner\"; break; } print \"outer\"; }", "inner\nouter\ninner\nouter\n" },
+		{ "for (var j = 0; j < 3; j = j + 1) { for (var k = 0; k < 3; k = k + 1) { if (j == 1 and k == 1) break; print j; print k; if (k == 0) break; } }", "0\n0\n1\n0\n2\n0\n" },
+		{ "var x = 0; while (x < 2) { var y = 0; while (y < 3) { if (y == 1) break; print x; print y; y = y + 1; } x = x + 1; }", "0\n0\n1\n0\n" },
+		{ "for (var m = 0; m < 2; m = m + 1) { for (var n = 0; n < 4; n = n + 1) { if (n == 2) break; print m; print n; break; print \"unreachable\"; } print \"outer-end\"; }", "0\n0\nouter-end\n1\n0\nouter-end\n" },
+		{ "for (;;) { print \"loop\"; break; print \"unreachable\"; }", "loop\n" },
+
 		// 局部变量与作用域
 		{ "{ var a = 5; print a; }", "5\n" },
 		{ "var a = 5; { var a = 7; print a; } print a;", "7\n5\n" },
@@ -653,6 +670,13 @@ void TestUnit::RunVMTest()
 		{ "var outer = 2; { var inner = 3; print outer + inner; }", "5\n" },
 		// 变量声明时可以访问同名的外层变量
 		{ "var a = 10; { var a = a + 5; { var a = a + 10; print a; } }", "25\n" },
+
+		// 精简后的组合 if/else 与 and/or 一行用例（5 个代表性用例）
+		{ "var a = 0; if (true or (a = 1)) print \"then\"; else print \"else\"; print a;", "then\n0\n" },
+		{ "var a = 0; if (false or (a = 1)) print \"then\"; else print \"else\"; print a;", "then\n1\n" },
+		{ "var b = 0; if (true and (b = 1)) print \"then\"; else print \"else\"; print b;", "then\n1\n" },
+		{ "final var f = true; var x = 0; if (f or (x = 1)) print x; else print -1;", "0\n" },
+		{ "var a = 0; if ((false or true) and (a = 3)) print \"ok\"; else print \"no\"; print a;", "ok\n3\n" },
 
 		// 错误路径：运行时错误
 		{ "print 1 / 0;", "Division by zero.", INTERPRET_RUNTIME_ERROR },

@@ -62,6 +62,10 @@ private:
 	size_t nextToken = 0;
 	Chunk* compilingChunk = nullptr;
 
+	uint32_t currentLoopStart = -1;
+	std::unordered_map<uint32_t, std::vector<uint32_t>> breakJumpPatches;
+	std::unordered_map<uint32_t, std::vector<uint32_t>> continueJumpPatches;
+
 	void Init();
 
 	// --- Core Parsing Flow ---
@@ -72,6 +76,10 @@ private:
 	void FinalVarDeclaration();
 	void PrintStatement();
 	void ExpressionStatement();
+	void IfStatement();
+	void WhileStatement();
+	void BreakStatement();
+	void ForStatement();
 	void Expression();
 	void BeginScope();
 	void Block();
@@ -89,6 +97,8 @@ private:
 	void Binary();
 	void Trinary();
 	void Equality();
+	void And();
+	void Or();
 	void NamedVariable(bool canAssign);
 
 	// --- Token Helpers ---
@@ -118,6 +128,12 @@ private:
 	void DeclareVariable(bool constant);
 	void AddLocal(const Token& name, bool constant);
 	int ResolveLocal(const Token& name);
+
+	// --- Jump Helpers ---
+	int32_t EmitJump(uint8_t instruction);
+	void PatchJump(int32_t offset);
+	void EmitLoop(int32_t loopStart);
+	void PatchBreaks(int32_t loopStart);
 
 	// --- Error Handling ---
 	void Error(const char* message);

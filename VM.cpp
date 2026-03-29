@@ -65,7 +65,7 @@ VMValue VM::Pop()
 	return value;
 }
 
-VMValue VM::Peek(int distance)
+VMValue VM::Peek(int32_t distance)
 {
 	if (stacks == nullptr || stackTop - distance - 1 < stacks)
 	{
@@ -149,6 +149,12 @@ InterpretResult VM::Run()
 {
 	auto READ_BYTE = [&]() -> uint8_t {
 		return *ip++;
+	};
+
+	auto READ_SHORT = [&]() -> uint16_t {
+		uint16_t value = (*ip << 8) | *(ip + 1);
+		ip += 2;
+		return value;
 	};
 
 	auto READ_CONSTANT = [&]() -> VMValue
@@ -505,6 +511,27 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				stacks[slot] = Peek(0);
+				break;
+			}
+			case OP_JUMP_IF_FALSE:
+			{
+				uint16_t offset = READ_SHORT();
+				if (IsFalsey(Peek(0)))
+				{
+					ip += offset;
+				}
+				break;
+			}
+			case OP_JUMP:
+			{
+				uint16_t offset = READ_SHORT();
+				ip += offset;
+				break;
+			}
+			case OP_LOOP:
+			{
+				uint16_t offset = READ_SHORT();
+				ip -= offset;
 				break;
 			}
 			case OP_RETURN:

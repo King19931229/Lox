@@ -36,6 +36,9 @@ enum OpCode
 	OP_EQUAL,
 	OP_GREATER,
 	OP_LESS,
+	OP_JUMP_IF_FALSE,
+	OP_JUMP,
+	OP_LOOP,
 	OP_RETURN,
 };
 
@@ -133,6 +136,8 @@ struct Chunk
 	int32_t GetLine(int32_t offset);
 	int32_t GetColumn(int32_t offset);
 
+	inline int32_t GetSize() const { return count; }
+
 	int32_t AddConstant(VMValue value);
 	void Free();
 
@@ -140,8 +145,8 @@ struct Chunk
 	int32_t SimpleInstruction(const char* name, int32_t offset);
 	// One-byte operand instructions print the instruction name and the operand, then return the offset of the next instruction.
 	int32_t ByteInstruction(const char* name, int32_t offset);
-	int32_t LocalInstruction(const char* name, int32_t offset);
-	int32_t LocalLongInstruction(const char* name, int32_t offset);
+	int32_t ThreeByteInstruction(const char* name, int32_t offset);
+	int32_t JumpInstruction(const char* name, int32_t sign, int32_t offset);
 	void PrintValue(VMValue value);
 	void PrintValueStdout(VMValue value);
 	int32_t ConstantInstruction(const char* name, int32_t offset);

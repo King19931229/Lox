@@ -112,20 +112,21 @@ int32_t Chunk::ByteInstruction(const char* name, int32_t offset)
 	return offset + 2;
 }
 
-int32_t Chunk::LocalInstruction(const char* name, int32_t offset)
-{
-	uint8_t operand = code[offset + 1];
-	printf("%-16s %4d\n", name, operand);
-	return offset + 2;
-}
-
-int32_t Chunk::LocalLongInstruction(const char* name, int32_t offset)
+int32_t Chunk::ThreeByteInstruction(const char* name, int32_t offset)
 {
 	uint32_t operand = (uint32_t)(code[offset + 1] << 16);
 	operand |= (uint32_t)(code[offset + 2] << 8);
 	operand |= (uint32_t)(code[offset + 3]);
 	printf("%-16s %4d\n", name, operand);
 	return offset + 4;
+}
+
+int32_t Chunk::JumpInstruction(const char* name, int32_t sign, int32_t offset)
+{
+    int32_t jump = (int32_t)((code[offset + 1] << 8) | code[offset + 2]);
+    int32_t target = offset + 3 + sign * jump;
+    printf("%-16s %4d -> %d\n", name, offset, target);
+    return offset + 3;
 }
 
 void Chunk::PrintValue(VMValue value)
@@ -222,13 +223,13 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 		case OP_SET_GLOBAL_LONG:
 			return ConstantLongInstruction("OP_SET_GLOBAL_LONG", offset);
 		case OP_GET_LOCAL:
-			return LocalInstruction("OP_GET_LOCAL", offset);
+			return ByteInstruction("OP_GET_LOCAL", offset);
 		case OP_GET_LOCAL_LONG:
-			return LocalLongInstruction("OP_GET_LOCAL_LONG", offset);
+			return ThreeByteInstruction("OP_GET_LOCAL_LONG", offset);
 		case OP_SET_LOCAL:
-			return LocalInstruction("OP_SET_LOCAL", offset);
+			return ByteInstruction("OP_SET_LOCAL", offset);
 		case OP_SET_LOCAL_LONG:
-			return LocalLongInstruction("OP_SET_LOCAL_LONG", offset);
+			return ThreeByteInstruction("OP_SET_LOCAL_LONG", offset);
 		case OP_EQUAL:
 			return SimpleInstruction("OP_EQUAL", offset);
 		case OP_GREATER:
@@ -239,6 +240,12 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return SimpleInstruction("OP_RETURN", offset);
 		case OP_POP:
 			return SimpleInstruction("OP_POP", offset);
+		case OP_JUMP_IF_FALSE:
+			return JumpInstruction("OP_JUMP_IF_FALSE", 1, offset);
+		case OP_JUMP:
+			return JumpInstruction("OP_JUMP", 1, offset);
+		case OP_LOOP:
+			return JumpInstruction("OP_LOOP", -1, offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;
