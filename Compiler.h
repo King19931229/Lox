@@ -63,8 +63,8 @@ private:
 	Chunk* compilingChunk = nullptr;
 
 	uint32_t currentLoopStart = -1;
+	uint32_t currentLoopContinue = -1;
 	std::unordered_map<uint32_t, std::vector<uint32_t>> breakJumpPatches;
-	std::unordered_map<uint32_t, std::vector<uint32_t>> continueJumpPatches;
 
 	void Init();
 
@@ -79,6 +79,8 @@ private:
 	void IfStatement();
 	void WhileStatement();
 	void BreakStatement();
+	void ContinueStatement();
+	void SwitchStatement();
 	void ForStatement();
 	void Expression();
 	void BeginScope();

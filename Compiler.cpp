@@ -115,9 +115,17 @@ void Compiler::Statement()
 	{
 		BreakStatement();
 	}
+	else if (Match(CONTINUE))
+	{
+		ContinueStatement();
+	}
 	else if (Match(FOR))
 	{
 		ForStatement();
+	}
+	else if (Match(SWITCH))
+	{
+		SwitchStatement();
 	}
 	else if (Match(LEFT_BRACE))
 	{
@@ -175,7 +183,10 @@ void Compiler::WhileStatement()
 	Consume(LEFT_PAREN, "Expect '(' after 'if'.");
 	int32_t outterLoopStart = currentLoopStart;
 	int32_t loopStart = (int32_t)compilingChunk->GetSize();
+
 	currentLoopStart = loopStart;
+	currentLoopContinue = loopStart;
+
 	Expression();
 	Consume(RIGHT_PAREN, "Expect ')' after condition.");
 	int32_t exitJump = EmitJump(OP_JUMP_IF_FALSE);
@@ -186,6 +197,8 @@ void Compiler::WhileStatement()
 	EmitByte(OP_POP);
 	// Patch any pending break jumps to jump here (after the loop).
 	PatchBreaks(loopStart);
+
+	currentLoopContinue = currentLoopStart;
 	currentLoopStart = outterLoopStart;
 }
 
@@ -199,6 +212,89 @@ void Compiler::BreakStatement()
 	}
 	int32_t breakJump = EmitJump(OP_JUMP);
 	breakJumpPatches[currentLoopStart].push_back(breakJump);
+}
+
+void Compiler::ContinueStatement()
+{
+	Consume(SEMICOLON, "Expect ';' after 'continue'.");
+	EmitLoop(currentLoopContinue);
+}
+
+void Compiler::SwitchStatement()
+{
+	int32_t outterLoopStart = currentLoopStart;
+	int32_t loopStart = (int32_t)compilingChunk->GetSize();
+	currentLoopStart = loopStart;
+
+	Consume(LEFT_PAREN, "Expect '(' after 'switch'.");
+	Expression();
+	Consume(RIGHT_PAREN, "Expect ')' after switch expression.");
+
+	Consume(LEFT_BRACE, "Expect '{' after switch expression.");
+
+	bool defaultFound = false;
+	int32_t lastThroughJump = -1;
+
+	while (!Match(RIGHT_BRACE) && !Check(END_OF_FILE))
+	{
+		if (Match(CASE))
+		{
+			EmitByte(OP_DUP);
+			Expression();
+			Consume(COLON, "Expect ':' after case value.");
+			EmitByte(OP_EQUAL);
+			int32_t caseJump = EmitJump(OP_JUMP_IF_FALSE);
+			// Pop the comparison result.
+			EmitByte(OP_POP);
+			// If there was a previous case that fell through to this one, patch its jump to jump here (the start of this case's body).
+			if (lastThroughJump != -1)
+			{
+				PatchJump(lastThroughJump);
+			}
+			while (!Check(CASE) && !Check(DEFAULT) && !Check(RIGHT_BRACE))
+			{
+				Statement();
+			}
+			lastThroughJump = EmitJump(OP_JUMP);
+			PatchJump(caseJump);
+			// Pop the comparison result.
+			EmitByte(OP_POP);
+		}
+		else if (Match(DEFAULT))
+		{
+			Consume(COLON, "Expect ':' after 'default'.");
+			if (defaultFound)
+			{
+				Error("Multiple 'default' labels in one switch.");
+				return;
+			}			
+			if (lastThroughJump != -1)
+			{
+				PatchJump(lastThroughJump);
+			}
+			while (!Check(CASE) && !Check(DEFAULT) && !Check(RIGHT_BRACE))
+			{
+				Statement();
+			}
+			defaultFound = true;
+			lastThroughJump = EmitJump(OP_JUMP);
+		}
+		else
+		{
+			Error("Expect 'case' or 'default' in switch statement.");
+			return;
+		}
+	}
+	if (lastThroughJump != -1)
+	{
+		PatchJump(lastThroughJump);
+	}
+
+	PatchBreaks(loopStart);
+	// Pop the switch expression value.
+	EmitByte(OP_POP);
+
+	currentLoopStart = outterLoopStart;
 }
 
 void Compiler::ForStatement()
@@ -236,7 +332,13 @@ void Compiler::ForStatement()
 	EmitByte(OP_POP);
 	int32_t bodyJump = EmitJump(OP_JUMP);
 	// Increment.
+
+	int32_t outterLoopContinue = currentLoopContinue;
 	int32_t incrementStart = (int32_t)compilingChunk->GetSize();
+	// Set the continue target to the start of the increment code,
+	// so that 'continue' statements in the loop body will jump to the increment before jumping back to the condition check.
+	currentLoopContinue = incrementStart;
+
 	if (Match(RIGHT_PAREN))
 	{
 		// No increment.
@@ -256,7 +358,10 @@ void Compiler::ForStatement()
 	EmitByte(OP_POP);
 	// Patch any pending break jumps to jump here (after the loop).
 	PatchBreaks(loopStart);
+
+	currentLoopContinue = outterLoopContinue;
 	currentLoopStart = outterLoopStart;
+
 	EndScope();
 }
 

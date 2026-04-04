@@ -240,6 +240,10 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return SimpleInstruction("OP_RETURN", offset);
 		case OP_POP:
 			return SimpleInstruction("OP_POP", offset);
+		case OP_DUP:
+			return SimpleInstruction("OP_DUP", offset);
+		case OP_NOP:
+			return SimpleInstruction("OP_NOP", offset);
 		case OP_JUMP_IF_FALSE:
 			return JumpInstruction("OP_JUMP_IF_FALSE", 1, offset);
 		case OP_JUMP:

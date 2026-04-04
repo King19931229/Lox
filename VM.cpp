@@ -435,6 +435,15 @@ InterpretResult VM::Run()
 				Pop();
 				break;
 			}
+			case OP_DUP:
+			{
+				Push(Peek(0));
+				break;
+			}
+			case OP_NOP:
+			{
+				break;
+			}
 			case OP_DEFINE_GLOBAL:
 			case OP_DEFINE_GLOBAL_LONG:
 			{

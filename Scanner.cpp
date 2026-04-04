@@ -20,6 +20,10 @@ std::unordered_map<std::string, TokenType> Scanner::keywords = {
 	{"final",  FINAL},
 	{"while",  WHILE},
 	{"break",  BREAK},
+	{"continue", CONTINUE},
+	{"switch", SWITCH},
+	{"case",   CASE},
+	{"default", DEFAULT}
 };
 
 Scanner::Scanner(const std::string& inSource)

@@ -51,6 +51,10 @@
 	TOKEN(FINAL,          "final")       /* final */ \
 	TOKEN(WHILE,          "while")       /* while */ \
 	TOKEN(BREAK,          "break")       /* break */ \
+	TOKEN(CONTINUE,       "continue")    /* continue */ \
+	TOKEN(SWITCH,         "switch")      /* switch */ \
+	TOKEN(CASE,           "case")        /* case */ \
+	TOKEN(DEFAULT,        "default")     /* default */ \
 	TOKEN(END_OF_FILE,    "EOF")         /* end of file */ \
 	TOKEN(ERROR,          "ERROR")       /* error */
 

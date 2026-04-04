@@ -684,6 +684,38 @@ void TestUnit::RunVMTest()
 		// 错误路径：final 变量不能重新赋值
 		{ "final var a = 1; a = 2;", "Cannot assign to a final variable.", INTERPRET_COMPILE_ERROR },
 		{ "{ final var a = 1; a = 2; }", "Cannot assign to a final variable.", INTERPRET_COMPILE_ERROR },
+
+		// switch: 匹配第一个 case 并 break
+		{ "var x = 7; switch (x) { case 7: print \"seven\"; break; case 9: print \"nine\"; break; default: print \"other\"; }", "seven\n" },
+		// switch: 匹配第二个 case
+		{ "var x = 9; switch (x) { case 7: print \"seven\"; break; case 9: print \"nine\"; break; default: print \"other\"; }", "nine\n" },
+		// switch: 未匹配任何 case，走 default
+		{ "var x = 0; switch (x) { case 7: print \"seven\"; break; case 9: print \"nine\"; break; default: print \"other\"; }", "other\n" },
+		// switch: 无 default，未匹配时跳过所有 case
+		{ "var x = 1; switch (x) { case 2: print \"two\"; break; case 3: print \"three\"; break; } print \"done\";", "done\n" },
+		// switch: fall-through（case 7 无 break，执行 case 7 和 case 9 的 body）
+		{ "var x = 7; switch (x) { case 7: print \"seven\"; case 9: print \"nine\"; break; default: print \"other\"; }", "seven\nnine\n" },
+		// switch: fall-through 一直到 default
+		{ "var x = 7; switch (x) { case 7: print \"a\"; default: print \"b\"; }", "a\nb\n" },
+		// switch: 空 switch（直接 {}）
+		{ "var x = 1; switch (x) {} print \"ok\";", "ok\n" },
+		// switch: 表达式为字符串
+		{ "var s = \"hello\"; switch (s) { case \"hello\": print \"hi\"; break; default: print \"bye\"; }", "hi\n" },
+		// switch: break 不影响外层 while
+		{ "var i = 0; while (i < 2) { switch (i) { case 0: print \"zero\"; break; default: print \"nonzero\"; } i = i + 1; }", "zero\nnonzero\n" },
+		// switch: 嵌套 switch
+		{ "var x = 1; var y = 2; switch (x) { case 1: switch (y) { case 2: print \"1-2\"; break; default: print \"1-other\"; } break; default: print \"other\"; }", "1-2\n" },
+
+		// continue: while 中跳过奇数
+		{ "var i = 0; while (i < 5) { i = i + 1; if (i == 2 or i == 4) continue; print i; }", "1\n3\n5\n" },
+		// continue: for 中跳过偶数（increment 仍然执行）
+		{ "for (var i = 0; i < 6; i = i + 1) { if (i == 1 or i == 3 or i == 5) continue; print i; }", "0\n2\n4\n" },
+		// continue: 嵌套循环 continue 只影响最内层
+		{ "for (var i = 0; i < 2; i = i + 1) { for (var j = 0; j < 3; j = j + 1) { if (j == 1) continue; print i; print j; } }", "0\n0\n0\n2\n1\n0\n1\n2\n" },
+		// continue: while + 计数器验证 increment 正常
+		{ "var n = 0; var sum = 0; while (n < 5) { n = n + 1; if (n == 3) continue; sum = sum + n; } print sum;", "12\n" },
+		// continue: for 中 continue 后不执行 continue 后面的语句
+		{ "for (var i = 0; i < 3; i = i + 1) { if (i == 1) { continue; print \"unreachable\"; } print i; }", "0\n2\n" },
 	};
 
 #ifdef _WIN32

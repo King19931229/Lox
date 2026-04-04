@@ -263,8 +263,20 @@ int main(int argc, char* argv[])
 	vm.Init();
 	vm.Interpret(R"(
 	{
-		var a = 1 + 2 * 3;
-		a = a + 1;
+		var a = 1 + 2 * 3 + 2;
+		switch (a)
+		{
+			case 7:
+				print "seven";
+				print "seven again";
+				//break;
+			case 9:
+				print "nine";
+				//break;
+			default:
+				break;
+				print "other";
+		}
 	}
 	)");
 	vm.Free();
