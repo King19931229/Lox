@@ -7,7 +7,8 @@ class Compiler
 {
 protected:
 public:
-	bool Compile(const char* source, Chunk* outChunk);
+	Compiler(Chunk* chunk = nullptr);
+	VMValue Compile(const char* source);
 private:
 	enum Precedence
 	{
@@ -43,6 +44,23 @@ private:
 		bool panicMode = false;
 	} parser;
 
+	enum FunctionType
+	{
+		TYPE_SCRIPT,
+		TYPE_FUNCTION,
+	};
+
+	// Lightweight placeholder for the top-level script callable.
+	// Inherits directly from Value so no extra headers are needed.
+	struct ScriptFunction : public Value
+	{
+		ScriptFunction() { this->type = TYPE_CALLABLE; }
+		operator std::string() const override { return "<script>"; }
+	};
+
+	VMValue function;
+	FunctionType type;
+
 	// Local variable tracking (adapted from C implementation)
 	static constexpr uint32_t LOCAL_MAX = 0xFFFFFF;
 	struct Local
@@ -51,7 +69,6 @@ private:
 		int depth = -1;
 		bool constant = false;
 	};
-
 	std::vector<Local> locals;
 	int scopeDepth = 0;
 
@@ -60,13 +77,12 @@ private:
 
 	std::vector<Token> tokens;
 	size_t nextToken = 0;
-	Chunk* compilingChunk = nullptr;
 
 	uint32_t currentLoopStart = -1;
 	uint32_t currentLoopContinue = -1;
 	std::unordered_map<uint32_t, std::vector<uint32_t>> breakJumpPatches;
 
-	void Init();
+	void Init(FunctionType type);
 
 	// --- Core Parsing Flow ---
 	void Advance();
@@ -88,7 +104,7 @@ private:
 	void EndScope();
 	void ParsePrecedence(Precedence precedence);
 	void Synchronize();
-	void EndCompiler();
+	VMValue EndCompiler();
 
 	// --- Grammar Rules ---
 	void Number(bool canAssign);
@@ -121,6 +137,7 @@ private:
 		EmitBytes(args...);
 	}
 	void EmitConstant(VMValue value);
+	Chunk* CurrentChunk();
 
 	// --- Variable Helpers ---
 	uint32_t ParseVariable(const std::string& errorMessage, bool constant);

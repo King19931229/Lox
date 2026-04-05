@@ -1,25 +1,43 @@
 #include "Compiler.h"
+#include "LoxCallable.h"
 
 #define DEBUG_PRINT_CODE
 
-void Compiler::Init()
+Compiler::Compiler(Chunk* chunk)
 {
-	locals.clear();
-	scopeDepth = 0;
+	function = VMValue(nullptr, chunk);
+	type = TYPE_SCRIPT;
 }
 
-bool Compiler::Compile(const char* source, Chunk* outChunk)
+Chunk* Compiler::CurrentChunk()
+{
+    return function.chunk;
+}
+
+void Compiler::Init(FunctionType inType)
+{
+	type = inType;
+    function.value = new Compiler::ScriptFunction();
+	locals.clear();
+	scopeDepth = 0;
+	currentLoopStart = -1;
+	currentLoopContinue = -1;
+	// The first local slot is reserved for internal use
+	Local local;
+	local.depth = 0;
+	locals.push_back(local);
+}
+
+VMValue Compiler::Compile(const char* source)
 {
 	Scanner scanner(source);
 	tokens = scanner.ScanTokens();
 	if (tokens.empty() || tokens[tokens.size() - 1].type != END_OF_FILE)
 	{
-		return false;
+		return VMValue();
 	}
 
-	Init();
-
-	compilingChunk = outChunk;
+	Init(TYPE_SCRIPT);
 
 	Advance();
 
@@ -28,8 +46,8 @@ bool Compiler::Compile(const char* source, Chunk* outChunk)
 		Delclaration();
 	}
 
-	EndCompiler();
-	return !parser.hadError;
+	VMValue function = EndCompiler();
+	return !parser.hadError ? function : VMValue();
 }
 
 // --- Core Parsing Flow ---
@@ -119,13 +137,13 @@ void Compiler::Statement()
 	{
 		ContinueStatement();
 	}
-	else if (Match(FOR))
-	{
-		ForStatement();
-	}
 	else if (Match(SWITCH))
 	{
 		SwitchStatement();
+	}
+	else if (Match(FOR))
+	{
+		ForStatement();
 	}
 	else if (Match(LEFT_BRACE))
 	{
@@ -182,11 +200,10 @@ void Compiler::WhileStatement()
 {
 	Consume(LEFT_PAREN, "Expect '(' after 'if'.");
 	int32_t outterLoopStart = currentLoopStart;
-	int32_t loopStart = (int32_t)compilingChunk->GetSize();
-
+	int32_t outterLoopContinue = currentLoopContinue;
+	int32_t loopStart = (int32_t)CurrentChunk()->GetSize();
 	currentLoopStart = loopStart;
 	currentLoopContinue = loopStart;
-
 	Expression();
 	Consume(RIGHT_PAREN, "Expect ')' after condition.");
 	int32_t exitJump = EmitJump(OP_JUMP_IF_FALSE);
@@ -197,9 +214,8 @@ void Compiler::WhileStatement()
 	EmitByte(OP_POP);
 	// Patch any pending break jumps to jump here (after the loop).
 	PatchBreaks(loopStart);
-
-	currentLoopContinue = currentLoopStart;
 	currentLoopStart = outterLoopStart;
+	currentLoopContinue = outterLoopContinue;
 }
 
 void Compiler::BreakStatement()
@@ -217,13 +233,18 @@ void Compiler::BreakStatement()
 void Compiler::ContinueStatement()
 {
 	Consume(SEMICOLON, "Expect ';' after 'continue'.");
-	EmitLoop(currentLoopContinue);
+	if (currentLoopContinue == (uint32_t)-1)
+	{
+		Error("Can't use 'continue' outside of a loop.");
+		return;
+	}
+	EmitLoop((int32_t)currentLoopContinue);
 }
 
 void Compiler::SwitchStatement()
 {
 	int32_t outterLoopStart = currentLoopStart;
-	int32_t loopStart = (int32_t)compilingChunk->GetSize();
+	int32_t loopStart = (int32_t)CurrentChunk()->GetSize();
 	currentLoopStart = loopStart;
 
 	Consume(LEFT_PAREN, "Expect '(' after 'switch'.");
@@ -244,20 +265,18 @@ void Compiler::SwitchStatement()
 			Consume(COLON, "Expect ':' after case value.");
 			EmitByte(OP_EQUAL);
 			int32_t caseJump = EmitJump(OP_JUMP_IF_FALSE);
-			// Pop the comparison result.
 			EmitByte(OP_POP);
-			// If there was a previous case that fell through to this one, patch its jump to jump here (the start of this case's body).
 			if (lastThroughJump != -1)
 			{
 				PatchJump(lastThroughJump);
+				lastThroughJump = -1;
 			}
-			while (!Check(CASE) && !Check(DEFAULT) && !Check(RIGHT_BRACE))
+			while (!Check(CASE) && !Check(DEFAULT) && !Check(RIGHT_BRACE) && !Check(END_OF_FILE))
 			{
 				Statement();
 			}
 			lastThroughJump = EmitJump(OP_JUMP);
 			PatchJump(caseJump);
-			// Pop the comparison result.
 			EmitByte(OP_POP);
 		}
 		else if (Match(DEFAULT))
@@ -267,12 +286,13 @@ void Compiler::SwitchStatement()
 			{
 				Error("Multiple 'default' labels in one switch.");
 				return;
-			}			
+			}
 			if (lastThroughJump != -1)
 			{
 				PatchJump(lastThroughJump);
+				lastThroughJump = -1;
 			}
-			while (!Check(CASE) && !Check(DEFAULT) && !Check(RIGHT_BRACE))
+			while (!Check(CASE) && !Check(DEFAULT) && !Check(RIGHT_BRACE) && !Check(END_OF_FILE))
 			{
 				Statement();
 			}
@@ -285,15 +305,15 @@ void Compiler::SwitchStatement()
 			return;
 		}
 	}
+
 	if (lastThroughJump != -1)
 	{
 		PatchJump(lastThroughJump);
 	}
-
+	// Patch break jumps BEFORE emitting the switch-expression pop,
+	// so break also cleans up the switch value from the stack.
 	PatchBreaks(loopStart);
-	// Pop the switch expression value.
 	EmitByte(OP_POP);
-
 	currentLoopStart = outterLoopStart;
 }
 
@@ -316,7 +336,8 @@ void Compiler::ForStatement()
 	}
 	// Condition.
 	int32_t outterLoopStart = currentLoopStart;
-	int32_t loopStart = (int32_t)compilingChunk->GetSize();
+	int32_t outterLoopContinue = currentLoopContinue;
+	int32_t loopStart = (int32_t)CurrentChunk()->GetSize();
 	currentLoopStart = loopStart;
 	if (Match(SEMICOLON))
 	{
@@ -332,13 +353,7 @@ void Compiler::ForStatement()
 	EmitByte(OP_POP);
 	int32_t bodyJump = EmitJump(OP_JUMP);
 	// Increment.
-
-	int32_t outterLoopContinue = currentLoopContinue;
-	int32_t incrementStart = (int32_t)compilingChunk->GetSize();
-	// Set the continue target to the start of the increment code,
-	// so that 'continue' statements in the loop body will jump to the increment before jumping back to the condition check.
-	currentLoopContinue = incrementStart;
-
+	int32_t incrementStart = (int32_t)CurrentChunk()->GetSize();
 	if (Match(RIGHT_PAREN))
 	{
 		// No increment.
@@ -352,16 +367,15 @@ void Compiler::ForStatement()
 	}
 	EmitLoop(loopStart);
 	PatchJump(bodyJump);
+	currentLoopContinue = (uint32_t)incrementStart;
 	Statement();
 	EmitLoop(incrementStart);
 	PatchJump(exitJump);
 	EmitByte(OP_POP);
 	// Patch any pending break jumps to jump here (after the loop).
 	PatchBreaks(loopStart);
-
-	currentLoopContinue = outterLoopContinue;
 	currentLoopStart = outterLoopStart;
-
+	currentLoopContinue = outterLoopContinue;
 	EndScope();
 }
 
@@ -441,15 +455,17 @@ void Compiler::Synchronize()
 	}
 }
 
-void Compiler::EndCompiler()
+VMValue Compiler::EndCompiler()
 {
 	EmitByte(OP_RETURN);
 #ifdef DEBUG_PRINT_CODE	
 	if (!parser.hadError)
 	{
-		compilingChunk->Disassemble("code");
+		std::string disassemblyName = static_cast<std::string>(*function.value);
+		CurrentChunk()->Disassemble(disassemblyName.c_str());
 	}
 #endif // DEBUG_PRINT_CODE
+	return function;
 }
 
 // --- Grammar Rules ---
@@ -754,6 +770,10 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[VAR]           = { nullptr,             nullptr,            PREC_NONE };
 		rules[WHILE]         = { nullptr,             nullptr,            PREC_NONE };
 		rules[BREAK]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[CONTINUE]      = { nullptr,             nullptr,            PREC_NONE };
+		rules[SWITCH]        = { nullptr,             nullptr,            PREC_NONE };
+		rules[CASE]          = { nullptr,             nullptr,            PREC_NONE };
+		rules[DEFAULT]       = { nullptr,             nullptr,            PREC_NONE };
 		rules[END_OF_FILE]   = { nullptr,             nullptr,            PREC_NONE };
 		rules[ERROR]         = { nullptr,             nullptr,            PREC_NONE };
 	}
@@ -765,7 +785,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 
 void Compiler::EmitByte(uint8_t byte)
 {
-	compilingChunk->Write(byte, (int32_t)parser.previous.line, (int32_t)parser.previous.column);
+	CurrentChunk()->Write(byte, (int32_t)parser.previous.line, (int32_t)parser.previous.column);
 }
 
 void Compiler::EmitConstant(VMValue value)
@@ -799,7 +819,7 @@ uint32_t Compiler::ParseVariable(const std::string& errorMessage, bool constant)
 
 uint32_t Compiler::MakeConstant(VMValue value)
 {
-	int32_t constantIndex = compilingChunk->AddConstant(value);
+	int32_t constantIndex = CurrentChunk()->AddConstant(value);
 	if (constantIndex > 0xFFFFFF)
 	{
 		Error("Too many constants in one chunk.");
@@ -903,24 +923,24 @@ int32_t Compiler::EmitJump(uint8_t instruction)
 	EmitByte(instruction);
 	EmitByte(0xFF);
 	EmitByte(0xFF);
-	return (int32_t)compilingChunk->GetSize() - 2;
+	return (int32_t)CurrentChunk()->GetSize() - 2;
 }
 
 void Compiler::PatchJump(int32_t offset)
 {
-	int32_t jump = compilingChunk->GetSize() - offset - 2;
+	int32_t jump = CurrentChunk()->GetSize() - offset - 2;
 	if (jump > 0xFFFFFF)
 	{
 		Error("Too much code to jump over.");
 	}
-	compilingChunk->code[offset] = (uint8_t)((jump >> 8) & 0xFF);
-	compilingChunk->code[offset + 1] = (uint8_t)((jump >> 0) & 0xFF);
+	CurrentChunk()->code[offset] = (uint8_t)((jump >> 8) & 0xFF);
+	CurrentChunk()->code[offset + 1] = (uint8_t)((jump >> 0) & 0xFF);
 }
 
 void Compiler::EmitLoop(int32_t loopStart)
 {
 	EmitByte(OP_LOOP);
-	int32_t offset = (int32_t)compilingChunk->GetSize() - loopStart + 2;
+	int32_t offset = (int32_t)CurrentChunk()->GetSize() - loopStart + 2;
 	if (offset > 0xFFFF)
 	{
 		Error("Loop body too large.");

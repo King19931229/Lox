@@ -7,13 +7,29 @@
 #include <cstdarg>
 #include <iostream>
 
-// #define DEBUG_TRACE_EXECUTION
+#define DEBUG_TRACE_EXECUTION
 
 VM* VM::instance = nullptr;
 
 void VM::ResetStack()
 {
 	stackTop = stacks;
+}
+
+void VM::AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks)
+{
+	if (oldStacks == nullptr || newStacks == nullptr || oldStacks == newStacks)
+	{
+		return;
+	}
+
+	for (uint32_t i = 0; i < frameCount; ++i)
+	{
+		if (frames[i].slots != nullptr)
+		{
+			frames[i].slots = newStacks + (frames[i].slots - oldStacks);
+		}
+	}
 }
 
 void VM::Push(VMValue value)
@@ -31,8 +47,10 @@ void VM::Push(VMValue value)
 	{
 		size_t oldCapacity = stackCapacity;
 		size_t newCapacity = oldCapacity * 2;
+		VMValue* oldStacks = stacks;
 		VMValue* newStacks = GROW_ARRAY(VMValue, stacks, oldCapacity, newCapacity);
 		stacks = newStacks;
+		AdjustFrameSlots(oldStacks, newStacks);
 		stackTop = stacks + count;
 		stackCapacity = newCapacity;
 	}
@@ -56,8 +74,10 @@ VMValue VM::Pop()
 		size_t oldCapacity = stackCapacity;
 		size_t newCapacity = oldCapacity / 2;
 		if (newCapacity < STACK_MAX) newCapacity = STACK_MAX;
+		VMValue* oldStacks = stacks;
 		VMValue* newStacks = GROW_ARRAY(VMValue, stacks, oldCapacity, newCapacity);
 		stacks = newStacks;
+		AdjustFrameSlots(oldStacks, newStacks);
 		stackTop = stacks + count;
 		stackCapacity = newCapacity;
 	}
@@ -94,9 +114,10 @@ bool VM::IsString(VMValue value)
 void VM::RuntimeError(const char* format, ...)
 {
 	// compute current instruction index
-	size_t instruction = (size_t)(ip - chunk->code - 1);
-	int32_t line = chunk->lines[instruction];
-	int32_t column = chunk->columns[instruction];
+	CallFrame& currentFrame = frames[frameCount - 1];
+	size_t instruction = (size_t)(currentFrame.ip - currentFrame.function.chunk->code - 1);
+	int32_t line = currentFrame.function.chunk->lines[instruction];
+	int32_t column = currentFrame.function.chunk->columns[instruction];
 	fprintf(stderr, "VM RuntimeError [%d:%d]: ", line, column);
 
 	va_list args;
@@ -105,6 +126,7 @@ void VM::RuntimeError(const char* format, ...)
 	va_end(args);
 
 	ResetStack();
+	frameCount = 0;
 }
 
 InterpretResult VM::Negate()
@@ -127,19 +149,35 @@ InterpretResult VM::Negate()
 
 void VM::Init()
 {
-	chunk = nullptr;
 	objects = nullptr;
 	ResetStack();
+	frameCount = 0;
+}
+
+void VM::Free(VMValue* object)
+{
+	if (object == nullptr)
+	{
+		return;
+	}
+
+	delete object->value;
+	if (object->chunk)
+	{
+		object->chunk->Free();
+		delete object->chunk;
+	}
+	delete object;
 }
 
 void VM::Free()
 {
 	// Clean up all the VM allocated objects
-	Value* object = objects;
+	VMValue* object = objects;
 	while (object != nullptr)
 	{
-		Value* next = object->next;
-		delete object;
+		VMValue* next = object->next;
+		Free(object);
 		object = next;
 	}
 	objects = nullptr;
@@ -148,25 +186,25 @@ void VM::Free()
 InterpretResult VM::Run()
 {
 	auto READ_BYTE = [&]() -> uint8_t {
-		return *ip++;
+		return *frames[frameCount - 1].ip++;
 	};
 
 	auto READ_SHORT = [&]() -> uint16_t {
-		uint16_t value = (*ip << 8) | *(ip + 1);
-		ip += 2;
+		uint16_t value = (*frames[frameCount - 1].ip << 8) | *(frames[frameCount - 1].ip + 1);
+		frames[frameCount - 1].ip += 2;
 		return value;
 	};
 
 	auto READ_CONSTANT = [&]() -> VMValue
 	{
 		uint8_t constantIndex = READ_BYTE();
-		return chunk->constants.values[constantIndex];
+		return frames[frameCount - 1].function.chunk->constants.values[constantIndex];
 	};
 
 	auto READ_LONG_CONSTANT = [&]() -> VMValue
 	{
 		uint32_t constantIndex = (READ_BYTE() << 16) | (READ_BYTE() << 8) | READ_BYTE();
-		return chunk->constants.values[constantIndex];
+		return frames[frameCount - 1].function.chunk->constants.values[constantIndex];
 	};
 
 	auto READ_LOCAL_SLOT = [&]() -> uint32_t {
@@ -336,15 +374,15 @@ InterpretResult VM::Run()
 		return true;
 	};
 
-	while (chunk->code)
+	while (frames[frameCount - 1].function.chunk->code)
 	{
-		if (ip >= chunk->code + chunk->count)
+		if (frames[frameCount - 1].ip >= frames[frameCount - 1].function.chunk->code + frames[frameCount - 1].function.chunk->count)
 		{
 			break;
 		}
 
 #ifdef DEBUG_TRACE_EXECUTION
-		chunk->DisassembleInstruction((uint32_t)(ip - chunk->code));
+		frames[frameCount - 1].function.chunk->DisassembleInstruction((uint32_t)(frames[frameCount - 1].ip - frames[frameCount - 1].function.chunk->code));
 #endif
 
 		uint8_t opCode = READ_BYTE();
@@ -426,7 +464,7 @@ InterpretResult VM::Run()
 			case OP_PRINT:
 			{
 				VMValue value = Pop();
-				chunk->PrintValueStdout(value);
+				frames[frameCount - 1].function.chunk->PrintValueStdout(value);
 				std::cout << std::endl;
 				break;
 			}
@@ -502,24 +540,24 @@ InterpretResult VM::Run()
 			case OP_GET_LOCAL_LONG:
 			{
 				uint32_t slot = (opCode == OP_GET_LOCAL) ? READ_LOCAL_SLOT() : READ_LONG_LOCAL_SLOT();
-				if (stacks == nullptr || slot >= (uint32_t)(stackTop - stacks))
+				if (frames[frameCount - 1].slots == nullptr || slot >= (uint32_t)(stackTop - frames[frameCount - 1].slots))
 				{
-					RuntimeError("Local slot out of range.");
+					RuntimeError("Local slot %d out of range.", slot);
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Push(stacks[slot]);
+				Push(frames[frameCount - 1].slots[slot]);
 				break;
 			}
 			case OP_SET_LOCAL:
 			case OP_SET_LOCAL_LONG:
 			{
 				uint32_t slot = (opCode == OP_SET_LOCAL) ? READ_LOCAL_SLOT() : READ_LONG_LOCAL_SLOT();
-				if (stacks == nullptr || slot >= (uint32_t)(stackTop - stacks))
+				if (frames[frameCount - 1].slots == nullptr || slot >= (uint32_t)(stackTop - frames[frameCount - 1].slots))
 				{
 					RuntimeError("Local slot out of range.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				stacks[slot] = Peek(0);
+				frames[frameCount - 1].slots[slot] = Peek(0);
 				break;
 			}
 			case OP_JUMP_IF_FALSE:
@@ -527,20 +565,20 @@ InterpretResult VM::Run()
 				uint16_t offset = READ_SHORT();
 				if (IsFalsey(Peek(0)))
 				{
-					ip += offset;
+					frames[frameCount - 1].ip += offset;
 				}
 				break;
 			}
 			case OP_JUMP:
 			{
 				uint16_t offset = READ_SHORT();
-				ip += offset;
+				frames[frameCount - 1].ip += offset;
 				break;
 			}
 			case OP_LOOP:
 			{
 				uint16_t offset = READ_SHORT();
-				ip -= offset;
+				frames[frameCount - 1].ip -= offset;
 				break;
 			}
 			case OP_RETURN:
@@ -555,8 +593,11 @@ InterpretResult VM::Run()
 
 InterpretResult VM::Interpret(Chunk* inChunk)
 {
-	chunk = inChunk;
-	ip = chunk->code;
+	frameCount = 0;
+	CallFrame* frame = &frames[frameCount++];
+	frame->function = VMValue(nullptr, inChunk);
+	frame->ip = inChunk->code;
+	frame->slots = stacks;
 	return Run();
 }
 
@@ -565,16 +606,24 @@ InterpretResult VM::Interpret(const char* source)
 	Chunk localChunk;
 	localChunk.Init();
 
-	Compiler compiler;
+	Compiler compiler(&localChunk);
 
-	if (!compiler.Compile(source, &localChunk))
+	VMValue compiledFunction = compiler.Compile(source);
+	if (compiledFunction.value == nullptr)
 	{
 		localChunk.Free();
 		return INTERPRET_COMPILE_ERROR;
 	}
 
-	chunk = &localChunk;
-	ip = chunk->code;
+	// Slot 0 is reserved by the compiler for the implicit "function" object.
+	// Push the compiled function to occupy that slot before executing.
+	Push(compiledFunction);
+
+	frameCount = 0;
+	CallFrame* frame = &frames[frameCount++];
+	frame->function = VMValue(nullptr, compiledFunction.chunk);
+	frame->ip = compiledFunction.chunk->code;
+	frame->slots = stacks;
 
 	InterpretResult result = Run();
 

@@ -25,8 +25,6 @@ typedef std::shared_ptr<Value> ValuePtr;
 struct Value : public std::enable_shared_from_this<Value>
 {
 	ValueType type;
-	Value* next = nullptr; // GC linked list: tracks all heap-allocated Value objects in VM mode
-	bool isMarked = false; // GC mark flag for mark-sweep
 	virtual ~Value() = default;
 
 	// Invalid conversions report runtime errors and return default values.

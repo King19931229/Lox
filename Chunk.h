@@ -99,17 +99,25 @@ void free_array_impl(T* pointer, size_t old_count)
 #define FREE_ARRAY(type, pointer, oldCount) free_array_impl(pointer, oldCount)
 
 class VM;
+struct Chunk;
 
 struct VMValue
 {
 	Value* value;
+	Chunk* chunk;
+	VMValue* next = nullptr;
+	bool isMarked = false;
 	VMValue()
 		: value(nullptr)
+		, chunk(nullptr)
+		, next(nullptr)
 	{}
-	VMValue(Value* inValue)
+	VMValue(Value* inValue, Chunk* inChunk)
 		: value(inValue)
+		, chunk(inChunk)
+		, next(nullptr)
 	{}
-	static VMValue Create(Value* value);
+	static VMValue Create(Value* value, Chunk* chunk = nullptr);
 };
 
 struct VMValueArray

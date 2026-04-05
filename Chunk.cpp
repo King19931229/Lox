@@ -3,16 +3,14 @@
 #include <cstdio>
 #include <iostream>
 
-VMValue VMValue::Create(Value* value)
+VMValue VMValue::Create(Value* value, Chunk* chunk)
 {
-	if (!value) return VMValue(nullptr);
+	if (!value) return VMValue(nullptr, nullptr);
 	VM& vm = VM::GetInstance();
-	if (value->next == nullptr && vm.objects != value)
-	{
-		value->next = vm.objects;
-		vm.objects = value;
-	}
-	return VMValue(value);
+	VMValue* node = new VMValue(value, chunk);
+	node->next = vm.objects;
+	vm.objects = node;
+	return VMValue(value, chunk);
 }
 
 // VMValueArray implementations
