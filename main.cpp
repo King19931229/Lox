@@ -258,10 +258,11 @@ void TestChunk()
 
 int main(int argc, char* argv[])
 {
-#if 0
+#if 1
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
+	fun test()
 	{
 		var a = 1 + 2 * 3 + 2;
 		switch (a)
@@ -282,7 +283,7 @@ int main(int argc, char* argv[])
 	vm.Free();
 #endif
 
-#if 1
+#if 0
 	TestUnit::RunVMTest();
 #endif
 

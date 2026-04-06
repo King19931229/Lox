@@ -274,6 +274,9 @@ inline bool IsEqual(const Value* left, const Value* right)
 		case TYPE_NIL:    return true;
 		case TYPE_BOOL:   return static_cast<bool>(*left) == static_cast<bool>(*right);
 		case TYPE_STRING: return static_cast<const StringValue*>(left)->value == static_cast<const StringValue*>(right)->value;
+		case TYPE_CALLABLE:
+			// For simplicity, we consider all callables unequal (unless you want to implement a more complex identity system)
+			return false;
 		default:          return false;
 	}
 }

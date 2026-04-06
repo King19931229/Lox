@@ -1,12 +1,40 @@
 #include "Compiler.h"
 #include "LoxCallable.h"
 
-#define DEBUG_PRINT_CODE
+// #define DEBUG_PRINT_CODE
 
 Compiler::Compiler(Chunk* chunk)
+	: ctx(&ownCtx)
+	, parser(ownCtx.parser)
+	, tokens(ownCtx.tokens)
+	, nextToken(ownCtx.nextToken)
+	, globalConstants(ownCtx.globalConstants)
 {
 	function = VMValue(nullptr, chunk);
 	type = TYPE_SCRIPT;
+}
+
+Compiler::Compiler(ParseContext* sharedCtx, FunctionType fnType, const std::string& name)
+	: ctx(sharedCtx)
+	, parser(sharedCtx->parser)
+	, tokens(sharedCtx->tokens)
+	, nextToken(sharedCtx->nextToken)
+	, globalConstants(sharedCtx->globalConstants)
+	, ownsChunk(true)
+{
+	ownedChunk = new Chunk();
+	ownedChunk->Init();
+	function = VMValue(nullptr, ownedChunk);
+	type = fnType;
+}
+
+Compiler::~Compiler()
+{
+	if (ownsChunk && ownedChunk)
+	{
+		ownedChunk->Free();
+		delete ownedChunk;
+	}
 }
 
 Chunk* Compiler::CurrentChunk()
@@ -14,10 +42,17 @@ Chunk* Compiler::CurrentChunk()
     return function.chunk;
 }
 
-void Compiler::Init(FunctionType inType)
+void Compiler::Init(FunctionType inType, const std::string& name)
 {
 	type = inType;
-    function.value = new Compiler::ScriptFunction();
+	if (inType == TYPE_SCRIPT)
+	{
+		function.value = new Compiler::ScriptFunction();
+	}
+	else
+	{
+		function.value = new Compiler::VMFunctionValue(name);
+	}
 	locals.clear();
 	scopeDepth = 0;
 	currentLoopStart = -1;
@@ -76,9 +111,13 @@ void Compiler::Delclaration()
 	{
 		VarDeclaration(false);
 	}
-	else if(Match(FINAL))
+	else if (Match(FINAL))
 	{
 		FinalVarDeclaration();
+	}
+	else if (Match(FUN))
+	{
+		FunctionDeclaration();
 	}
 	else
 	{
@@ -176,6 +215,34 @@ void Compiler::FinalVarDeclaration()
 {
 	Consume(VAR, "Expect 'var' keyword for final variable declaration.");
 	VarDeclaration(true);
+}
+
+void Compiler::FunctionDeclaration()
+{
+	uint32_t global = ParseVariable("Expect function name.", false);
+	std::string name = parser.previous.lexeme;
+	Function(TYPE_FUNCTION, name);
+	DefineVariable(global, false);
+}
+
+void Compiler::Function(FunctionType fnType, const std::string& name)
+{
+	// The sub-compiler creates its own chunk internally and shares this compiler's
+	// ParseContext so both advance through the same token stream.
+	Compiler sub(ctx, fnType, name);
+	sub.Init(fnType, name);
+	sub.BeginScope();
+
+	// Token consumption here uses *this* (the enclosing compiler) — since
+	// sub shares ctx, nextToken advances for both simultaneously.
+	Consume(LEFT_PAREN, "Expect '(' after function name.");
+	Consume(RIGHT_PAREN, "Expect ')' after parameters. (Currently no parameters are supported)");
+	Consume(LEFT_BRACE, "Expect '{' before function body.");
+	sub.Block();
+
+	VMValue fn = sub.EndCompiler();
+	// Emit the compiled function as a constant into THIS compiler's chunk.
+	EmitConstant(fn);
 }
 
 void Compiler::IfStatement()
@@ -839,10 +906,7 @@ void Compiler::DefineVariable(uint32_t global, bool constant)
 	if (scopeDepth > 0)
 	{
 		// Local variable. Mark it defined at this scope depth and emit no bytecode.
-		if (!locals.empty())
-		{
-			locals.back().depth = scopeDepth;
-		}
+		MarkInitialize();
 		return;
 	}
 
@@ -895,6 +959,18 @@ void Compiler::AddLocal(const Token& name, bool constant)
 	locals.back().name = name;
 	locals.back().constant = constant;
 	locals.back().depth = -1;
+}
+
+void Compiler::MarkInitialize()
+{
+	if (scopeDepth == 0)
+	{
+		return;
+	}
+	if (!locals.empty())
+	{
+		locals.back().depth = scopeDepth;
+	}
 }
 
 int Compiler::ResolveLocal(const Token& name)

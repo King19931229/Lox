@@ -7,7 +7,8 @@ class Compiler
 {
 protected:
 public:
-	Compiler(Chunk* chunk = nullptr);
+	Compiler(Chunk* chunk = nullptr);  // Root compiler: takes external chunk
+	~Compiler();
 	VMValue Compile(const char* source);
 private:
 	enum Precedence
@@ -36,18 +37,28 @@ private:
 		Precedence precedence;
 	};
 
-	struct Parser
-	{
-		Token current;
-		Token previous;
-		bool hadError = false;
-		bool panicMode = false;
-	} parser;
-
 	enum FunctionType
 	{
 		TYPE_SCRIPT,
 		TYPE_FUNCTION,
+	};
+
+	// Shared parse state — owned by the root compiler, referenced by sub-compilers.
+	// Keeping it in one place means all compilers in a compilation unit advance
+	// through the same token stream automatically.
+	struct ParseContext
+	{
+		struct Parser
+		{
+			Token current;
+			Token previous;
+			bool hadError  = false;
+			bool panicMode = false;
+		} parser;
+
+		std::vector<Token>                  tokens;
+		size_t                              nextToken = 0;
+		std::unordered_map<uint32_t, bool>  globalConstants;
 	};
 
 	// Lightweight placeholder for the top-level script callable.
@@ -58,7 +69,32 @@ private:
 		operator std::string() const override { return "<script>"; }
 	};
 
-	VMValue function;
+	// Placeholder for a named function compiled by the VM compiler.
+	struct VMFunctionValue : public Value
+	{
+		std::string name;
+		explicit VMFunctionValue(const std::string& inName) : name(inName) { this->type = TYPE_CALLABLE; }
+		operator std::string() const override { return "<fn " + name + ">"; }
+	};
+
+	// Private constructor for function sub-compilers.
+	// Shares the caller's ParseContext; creates own chunk internally.
+	Compiler(ParseContext* sharedCtx, FunctionType fnType, const std::string& name);
+
+	ParseContext  ownCtx;   // storage; only meaningful for the root compiler
+	ParseContext* ctx;
+
+	Chunk* ownedChunk = nullptr;  // non-null only for sub-compilers that own their chunk
+	bool   ownsChunk  = false;    // true if this compiler is responsible for freeing ownedChunk      // always valid — == &ownCtx for root, parent ptr for subs
+
+	// Reference aliases into *ctx so every method in the .cpp can keep its
+	// existing "parser.xxx", "tokens[i]", "nextToken", "globalConstants" spelling.
+	ParseContext::Parser&               parser;
+	std::vector<Token>&                 tokens;
+	size_t&                             nextToken;
+	std::unordered_map<uint32_t, bool>& globalConstants;
+
+	VMValue      function;
 	FunctionType type;
 
 	// Local variable tracking (adapted from C implementation)
@@ -66,23 +102,17 @@ private:
 	struct Local
 	{
 		Token name;
-		int depth = -1;
-		bool constant = false;
+		int   depth    = -1;
+		bool  constant = false;
 	};
 	std::vector<Local> locals;
 	int scopeDepth = 0;
-
-	// Map if the global is constant
-	std::unordered_map<uint32_t, bool> globalConstants;
-
-	std::vector<Token> tokens;
-	size_t nextToken = 0;
 
 	uint32_t currentLoopStart = -1;
 	uint32_t currentLoopContinue = -1;
 	std::unordered_map<uint32_t, std::vector<uint32_t>> breakJumpPatches;
 
-	void Init(FunctionType type);
+	void Init(FunctionType type, const std::string& name = "");
 
 	// --- Core Parsing Flow ---
 	void Advance();
@@ -90,6 +120,8 @@ private:
 	void Statement();
 	void VarDeclaration(bool constant);
 	void FinalVarDeclaration();
+	void FunctionDeclaration();
+	void Function(FunctionType type, const std::string& name = "");
 	void PrintStatement();
 	void ExpressionStatement();
 	void IfStatement();
@@ -146,6 +178,7 @@ private:
 	void DefineVariable(uint32_t global, bool constant);
 	void DeclareVariable(bool constant);
 	void AddLocal(const Token& name, bool constant);
+	void MarkInitialize();
 	int ResolveLocal(const Token& name);
 
 	// --- Jump Helpers ---
