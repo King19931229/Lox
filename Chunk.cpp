@@ -13,6 +13,14 @@ VMValue VMValue::Create(Value* value, Chunk* chunk)
 	return VMValue(value, chunk);
 }
 
+static void PrintIndent(int32_t indent)
+{
+	for (int32_t i = 0; i < indent; ++i)
+	{
+		printf("    ");
+	}
+}
+
 // VMValueArray implementations
 void VMValueArray::Init()
 {
@@ -170,8 +178,9 @@ int32_t Chunk::ConstantLongInstruction(const char* name, int32_t offset)
 	return offset + 4;
 }
 
-int32_t Chunk::DisassembleInstruction(int32_t offset)
+int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 {
+	PrintIndent(indent);
 	printf("%04d ", offset);
 	if (offset > 0 && lines[offset] == lines[offset - 1] && columns[offset] == columns[offset - 1])
 	{
@@ -248,18 +257,47 @@ int32_t Chunk::DisassembleInstruction(int32_t offset)
 			return JumpInstruction("OP_JUMP", 1, offset);
 		case OP_LOOP:
 			return JumpInstruction("OP_LOOP", -1, offset);
+		case OP_CALL:
+			return ByteInstruction("OP_CALL", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;
 	}
 }
 
-void Chunk::Disassemble(const char* name)
+void Chunk::DisassembleConstant(int32_t index, int32_t indent)
 {
-	printf("== %s ==\n", name);
+	PrintIndent(indent);
+	printf("%4d '", index);
+	PrintValue(constants.values[index]);
+	printf("'");
+	/*if (constants.values[index].chunk)
+	{
+		printf(" ->\n");
+		std::string nestedName = constants.values[index].value ? static_cast<std::string>(*constants.values[index].value) : std::string("<chunk>");
+		constants.values[index].chunk->Disassemble(nestedName.c_str(), indent + 1);
+	}
+	else*/
+	{
+		printf("\n");
+	}
+}
+
+void Chunk::Disassemble(const char* name, int32_t indent)
+{
+	PrintIndent(indent);
+	printf("==== %s ====\n", name);
+	PrintIndent(indent);
+	printf("== Constants ==\n");
+	for (int32_t i = 0; i < constants.count; ++i)
+	{
+		DisassembleConstant(i, indent);
+	}
+	PrintIndent(indent);
+	printf("== Instructions ==\n");
 	for (int32_t offset = 0; offset < count;)
 	{
-		offset = DisassembleInstruction(offset);
+		offset = DisassembleInstruction(offset, indent);
 	}
 }
 

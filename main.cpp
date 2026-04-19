@@ -63,6 +63,13 @@ void TestChunk()
 {
 	VM& vm = VM::GetInstance();
 
+	auto InterpretChunk = [&](Chunk& chunk)
+	{
+		VMValue script(NilValue::CreateRaw(), &chunk);
+		vm.Interpret(script);
+		delete script.value;
+	};
+
 	// 1 * 2 + 3
 	{
 		Chunk chunk;
@@ -89,7 +96,7 @@ void TestChunk()
 		chunk.Write(OP_ADD, line, column);
 
 		chunk.Write(OP_RETURN, line, column);
-		vm.Interpret(&chunk);
+		InterpretChunk(chunk);
 		chunk.Free();
 	}
 	// 1 + 2 * 3
@@ -117,7 +124,7 @@ void TestChunk()
 		chunk.Write(OP_ADD, line, column);
 
 		chunk.Write(OP_RETURN, line, column);
-		vm.Interpret(&chunk);
+		InterpretChunk(chunk);
 		chunk.Free();
 	}
 	// 3 - 2 - 1
@@ -146,7 +153,7 @@ void TestChunk()
 		chunk.Write(OP_SUBTRACT, line, column);
 
 		chunk.Write(OP_RETURN, line, column);
-		vm.Interpret(&chunk);
+		InterpretChunk(chunk);
 		chunk.Free();
 	}
 	// (1 + 2 * 3) - (4 / -5)
@@ -187,7 +194,7 @@ void TestChunk()
 		chunk.Write(OP_SUBTRACT, line, column);
 
 		chunk.Write(OP_RETURN, line, column);
-		vm.Interpret(&chunk);
+		InterpretChunk(chunk);
 		chunk.Free();
 	}
 	// 4 - 3 * -2 (alternative)
@@ -220,7 +227,7 @@ void TestChunk()
 		chunk.Write(OP_SUBTRACT, line, column);
 
 		chunk.Write(OP_RETURN, line, column);
-		vm.Interpret(&chunk);
+		InterpretChunk(chunk);
 		chunk.Free();
 	}
 	// 4 - 3 * -2
@@ -249,7 +256,7 @@ void TestChunk()
 		chunk.Write(OP_SUBTRACT, line, column);
 
 		chunk.Write(OP_RETURN, line, column);
-		vm.Interpret(&chunk);
+		InterpretChunk(chunk);
 		chunk.Free();
 	}
 
@@ -262,9 +269,14 @@ int main(int argc, char* argv[])
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
-	fun test()
+	fun func()
 	{
-		var a = 1 + 2 * 3 + 2;
+		print "in func";
+	}
+	fun test(c, d)
+	{
+		func();
+		var a = 1 + c * d + 2;
 		switch (a)
 		{
 			case 7:
@@ -275,10 +287,13 @@ int main(int argc, char* argv[])
 				print "nine";
 				//break;
 			default:
-				break;
 				print "other";
 		}
+		return a;
 	}
+	test(1,1);
+	print clock();
+	print clock();
 	)");
 	vm.Free();
 #endif

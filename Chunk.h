@@ -41,6 +41,7 @@ enum OpCode
 	OP_JUMP_IF_FALSE,
 	OP_JUMP,
 	OP_LOOP,
+	OP_CALL,
 	OP_RETURN,
 };
 
@@ -161,8 +162,9 @@ struct Chunk
 	void PrintValueStdout(VMValue value);
 	int32_t ConstantInstruction(const char* name, int32_t offset);
 	int32_t ConstantLongInstruction(const char* name, int32_t offset);
-	int32_t DisassembleInstruction(int32_t offset);
-	void Disassemble(const char* name);
+	int32_t DisassembleInstruction(int32_t offset, int32_t indent = 0);
+	void DisassembleConstant(int32_t index, int32_t indent = 0);
+	void Disassemble(const char* name, int32_t indent = 0);
 
 	void WriteConstant(VMValue value, int32_t line, int32_t column);
 };

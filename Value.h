@@ -100,6 +100,7 @@ struct FloatValue : public Value
 struct StringValue : public Value
 {
 	std::string value;
+	// Cache for global variable slot index to optimize global variable access. Updated by the VM when a global variable is defined.
 	size_t cachedGlobalSlot = (size_t)-1;
 	static Value* CreateRaw(const std::string& inValue)
 	{

@@ -1,7 +1,10 @@
 #pragma once
 #include "Chunk.h"
+#include "Compiler.h"
 #include <unordered_map>
 #include <vector>
+
+struct VMValue; // Forward declaration
 
 enum InterpretResult
 {
@@ -19,7 +22,9 @@ struct CallFrame
 
 class VM
 {
+public:
 	friend struct VMValue;
+	VMValue* objects = nullptr;
 protected:
 	static VM* instance;
 
@@ -29,8 +34,6 @@ protected:
     VMValue* stacks = nullptr;
     size_t stackCapacity = 255;
     VMValue* stackTop = nullptr;
-
-	VMValue* objects = nullptr;
 
 	std::unordered_map<std::string, size_t> globalNameToSlot;
 	std::vector<VMValue> globalSlots;
@@ -46,6 +49,11 @@ protected:
 	VMValue Pop();
 	VMValue Peek(int32_t distance);
 	void Free(VMValue* object);
+
+	// Resolve a global variable slot by name, creating a new slot if it doesn't exist. Returns true on success.
+	bool ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot);
+	// Resolve a global variable slot by name, returning false if it doesn't exist. Returns true on success.
+	bool ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot);
 
 	bool IsNumber(VMValue value);
 	bool IsFalsey(VMValue value);
@@ -69,8 +77,12 @@ public:
 
 	// Execution
 	InterpretResult Run();
-	InterpretResult Interpret(Chunk* chunk);
+	// Call a function value with given argument count. Returns true on success.
+	bool Call(VMValue function, int argCount);
+	InterpretResult Interpret(VMValue function);
 	InterpretResult Interpret(const char* source);
+
+	void DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity);
 
 	void Repl();
 	void RunFile(const char* path);

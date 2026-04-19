@@ -645,6 +645,19 @@ void TestUnit::RunVMTest()
 		{ "var a = 1; a = a + 2; print a;", "3\n" },
 		{ "var first = \"L\"; var second = \"ox\"; print first + second;", "Lox\n" },
 
+		// 函数调用
+		{ "fun sayHi() { print \"hi\"; } sayHi();", "hi\n" },
+		{ "fun add(a, b) { return a + b; } print add(1, 2);", "3\n" },
+		{ "fun add3(a, b, c) { return a + b + c; } print add3(1, 2, 3);", "6\n" },
+		{ "fun join(a, b) { print a + b; } join(\"lo\", \"x\");", "lox\n" },
+		{ "fun identity(value) { return value; } print identity(42);", "42\n" },
+		{ "fun noReturn() { print \"side effect\"; } var result = noReturn(); print result;", "side effect\nnil\n" },
+		{ "fun factorial(n) { if (n <= 1) return 1; return n * factorial(n - 1); } print factorial(5);", "120\n" },
+		{ "fun apply2(fn, a, b) { return fn(a, b); } fun mul(x, y) { return x * y; } print apply2(mul, 3, 4);", "12\n" },
+		{ "fun outer() { fun inner() { print \"inner\"; } inner(); } outer();", "inner\n" },
+		{ "fun makePrinter() { fun inner() { return \"returned\"; } return inner; } var printer = makePrinter(); print printer();", "returned\n" },
+		{ "fun left() { print \"left\"; return 2; } fun right() { print \"right\"; return 3; } fun add(a, b) { return a + b; } print add(left(), right());", "left\nright\n5\n" },
+
 		// VM: while / for loops
 		// VM: while / for loops (including aggressive break/nested cases)
 		{ "var i = 0; while (i < 3) { print i; i = i + 1; }", "0\n1\n2\n" },
@@ -677,6 +690,10 @@ void TestUnit::RunVMTest()
 		{ "var b = 0; if (true and (b = 1)) print \"then\"; else print \"else\"; print b;", "then\n1\n" },
 		{ "final var f = true; var x = 0; if (f or (x = 1)) print x; else print -1;", "0\n" },
 		{ "var a = 0; if ((false or true) and (a = 3)) print \"ok\"; else print \"no\"; print a;", "ok\n3\n" },
+
+		// 函数调用错误路径
+		{ "fun add(a, b) { return a + b; } add(1);", "Expected 2 arguments but got 1.", INTERPRET_RUNTIME_ERROR },
+		{ "var value = 123; value();", "Can only call functions with bytecode.", INTERPRET_RUNTIME_ERROR },
 
 		// 错误路径：运行时错误
 		{ "print 1 / 0;", "Division by zero.", INTERPRET_RUNTIME_ERROR },

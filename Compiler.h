@@ -10,6 +10,59 @@ public:
 	Compiler(Chunk* chunk = nullptr);  // Root compiler: takes external chunk
 	~Compiler();
 	VMValue Compile(const char* source);
+
+	enum VMFunctionType
+	{
+		VM_FUNC_SCRIPT,
+		VM_FUNC_FUNCTION,
+		VM_FUNC_NATIVE,
+	};
+	
+	friend class VM;
+	struct VMFunctionBase : public Value
+	{
+		virtual int Arity() const = 0;
+		virtual VMFunctionType GetType() const = 0;
+	};
+
+	// Lightweight placeholder for the top-level script callable.
+	// Inherits directly from Value so no extra headers are needed.
+	struct ScriptFunction : public VMFunctionBase
+	{
+		explicit ScriptFunction() { this->type = TYPE_CALLABLE; }
+		int Arity() const override { return 0; }
+		operator std::string() const override { return "<script>"; }
+		VMFunctionType GetType() const override { return VM_FUNC_SCRIPT; }
+	};
+
+	// Placeholder for a named function compiled by the VM compiler.
+	struct VMFunctionValue : public VMFunctionBase
+	{
+		std::string name;
+		int32_t arity = 0;
+		explicit VMFunctionValue(const std::string& inName) : name(inName) { this->type = TYPE_CALLABLE; }
+		int Arity() const override { return arity; }
+		operator std::string() const override { return "<fn " + name + ">"; }
+		VMFunctionType GetType() const override { return VM_FUNC_FUNCTION; }
+	};
+
+	typedef VMValue(*NativeFn)(int argCount, VMValue* args);
+
+	// Placeholder for a native function callable. The VM will call the stored function pointer
+	struct NativeFunctionValue : public VMFunctionBase
+	{
+		std::string name;
+		int32_t arity = 0;
+		NativeFn function;
+		explicit NativeFunctionValue(const std::string& inName, NativeFn inFunction, int32_t inArity)
+			: name(inName), function(inFunction), arity(inArity)
+		{
+			this->type = TYPE_CALLABLE;
+		}
+		int Arity() const override { return arity; }
+		operator std::string() const override { return "<native fn " + name + ">"; }
+		VMFunctionType GetType() const override { return VM_FUNC_NATIVE; }
+	};
 private:
 	enum Precedence
 	{
@@ -59,22 +112,6 @@ private:
 		std::vector<Token>                  tokens;
 		size_t                              nextToken = 0;
 		std::unordered_map<uint32_t, bool>  globalConstants;
-	};
-
-	// Lightweight placeholder for the top-level script callable.
-	// Inherits directly from Value so no extra headers are needed.
-	struct ScriptFunction : public Value
-	{
-		ScriptFunction() { this->type = TYPE_CALLABLE; }
-		operator std::string() const override { return "<script>"; }
-	};
-
-	// Placeholder for a named function compiled by the VM compiler.
-	struct VMFunctionValue : public Value
-	{
-		std::string name;
-		explicit VMFunctionValue(const std::string& inName) : name(inName) { this->type = TYPE_CALLABLE; }
-		operator std::string() const override { return "<fn " + name + ">"; }
 	};
 
 	// Private constructor for function sub-compilers.
@@ -130,6 +167,7 @@ private:
 	void ContinueStatement();
 	void SwitchStatement();
 	void ForStatement();
+	void ReturnStatement();
 	void Expression();
 	void BeginScope();
 	void Block();
@@ -150,6 +188,7 @@ private:
 	void And();
 	void Or();
 	void NamedVariable(bool canAssign);
+	void Call();
 
 	// --- Token Helpers ---
 	Token ScanToken();
@@ -191,4 +230,7 @@ private:
 	void Error(const char* message);
 	void ErrorAt(Token* token, const char* message);
 	void ErrorAtCurrent(const char* message);
+
+	// --- Argument List Parsing ---
+	uint8_t ArgumentList();
 };

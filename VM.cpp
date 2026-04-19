@@ -6,8 +6,21 @@
 #include <string>
 #include <cstdarg>
 #include <iostream>
+#include <chrono>
 
-#define DEBUG_TRACE_EXECUTION
+// #define DEBUG_TRACE_EXECUTION
+
+namespace
+{
+	constexpr size_t INVALID_GLOBAL_SLOT = (size_t)-1;
+}
+
+VMValue clock(int argCount, VMValue* args)
+{
+	static const auto startTime = std::chrono::steady_clock::now();
+	auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - startTime);
+	return VMValue::Create(FloatValue::CreateRaw(elapsed.count()));
+}
 
 VM* VM::instance = nullptr;
 
@@ -23,6 +36,7 @@ void VM::AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks)
 		return;
 	}
 
+	// Rebase cached frame pointers after the stack buffer moves.
 	for (uint32_t i = 0; i < frameCount; ++i)
 	{
 		if (frames[i].slots != nullptr)
@@ -34,7 +48,7 @@ void VM::AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks)
 
 void VM::Push(VMValue value)
 {
-	// allocate initial stack if needed
+	// Allocate the stack lazily so empty VMs do not pay the upfront cost.
 	if (stacks == nullptr)
 	{
 		stackCapacity = STACK_MAX;
@@ -49,6 +63,7 @@ void VM::Push(VMValue value)
 		size_t newCapacity = oldCapacity * 2;
 		VMValue* oldStacks = stacks;
 		VMValue* newStacks = GROW_ARRAY(VMValue, stacks, oldCapacity, newCapacity);
+		// Growing the stack can move the buffer, so every frame slot pointer must be rebased.
 		stacks = newStacks;
 		AdjustFrameSlots(oldStacks, newStacks);
 		stackTop = stacks + count;
@@ -111,9 +126,79 @@ bool VM::IsString(VMValue value)
 	return value.value && value.value->type == TYPE_STRING;
 }
 
+bool VM::ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot)
+{
+	if (!IsString(nameValue))
+	{
+		RuntimeError("Global variable name must be a string.");
+		return false;
+	}
+
+	StringValue* stringValue = static_cast<StringValue*>(nameValue.value);
+	size_t cachedSlot = stringValue->cachedGlobalSlot;
+	if (cachedSlot != INVALID_GLOBAL_SLOT && cachedSlot < globalSlots.size())
+	{
+		outSlot = cachedSlot;
+		return true;
+	}
+
+	auto it = globalNameToSlot.find(stringValue->value);
+	if (it == globalNameToSlot.end())
+	{
+		size_t newSlot = globalSlots.size();
+		globalNameToSlot[stringValue->value] = newSlot;
+		globalSlots.push_back(VMValue());
+		stringValue->cachedGlobalSlot = newSlot;
+		outSlot = newSlot;
+		return true;
+	}
+
+	outSlot = it->second;
+	if (outSlot >= globalSlots.size())
+	{
+		globalSlots.resize(outSlot + 1);
+	}
+	stringValue->cachedGlobalSlot = outSlot;
+	return true;
+}
+
+bool VM::ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot)
+{
+	if (!IsString(nameValue))
+	{
+		RuntimeError("Global variable name must be a string.");
+		return false;
+	}
+
+	StringValue* stringValue = static_cast<StringValue*>(nameValue.value);
+	size_t cachedSlot = stringValue->cachedGlobalSlot;
+	if (cachedSlot != INVALID_GLOBAL_SLOT && cachedSlot < globalSlots.size())
+	{
+		outSlot = cachedSlot;
+		return true;
+	}
+
+	auto it = globalNameToSlot.find(stringValue->value);
+	if (it == globalNameToSlot.end())
+	{
+		RuntimeError("Undefined global variable '%s'.", stringValue->value.c_str());
+		return false;
+	}
+
+	outSlot = it->second;
+	if (outSlot >= globalSlots.size())
+	{
+		RuntimeError("Undefined global variable '%s'.", stringValue->value.c_str());
+		return false;
+	}
+
+	stringValue->cachedGlobalSlot = outSlot;
+	return true;
+}
+
 void VM::RuntimeError(const char* format, ...)
 {
-	// compute current instruction index
+	// Map the current instruction pointer back to source line/column for diagnostics.
 	CallFrame& currentFrame = frames[frameCount - 1];
 	size_t instruction = (size_t)(currentFrame.ip - currentFrame.function.chunk->code - 1);
 	int32_t line = currentFrame.function.chunk->lines[instruction];
@@ -150,6 +235,7 @@ InterpretResult VM::Negate()
 void VM::Init()
 {
 	objects = nullptr;
+	DefineNative("clock", clock, 0);
 	ResetStack();
 	frameCount = 0;
 }
@@ -304,76 +390,6 @@ InterpretResult VM::Run()
 		return INTERPRET_OK;
 	};
 
-	const size_t INVALID_GLOBAL_SLOT = (size_t)-1;
-
-	auto RESOLVE_OR_CREATE_GLOBAL_SLOT = [&](VMValue nameValue, size_t& outSlot) -> bool {
-		if (!IsString(nameValue))
-		{
-			RuntimeError("Global variable name must be a string.");
-			return false;
-		}
-
-		StringValue* stringValue = static_cast<StringValue*>(nameValue.value);
-		size_t cachedSlot = stringValue->cachedGlobalSlot;
-		if (cachedSlot != INVALID_GLOBAL_SLOT && cachedSlot < globalSlots.size())
-		{
-			outSlot = cachedSlot;
-			return true;
-		}
-
-		auto it = globalNameToSlot.find(stringValue->value);
-		if (it == globalNameToSlot.end())
-		{
-			size_t newSlot = globalSlots.size();
-			globalNameToSlot[stringValue->value] = newSlot;
-			globalSlots.push_back(VMValue());
-			stringValue->cachedGlobalSlot = newSlot;
-			outSlot = newSlot;
-			return true;
-		}
-
-		outSlot = it->second;
-		if (outSlot >= globalSlots.size())
-		{
-			globalSlots.resize(outSlot + 1);
-		}
-		stringValue->cachedGlobalSlot = outSlot;
-		return true;
-	};
-
-	auto RESOLVE_EXISTING_GLOBAL_SLOT = [&](VMValue nameValue, size_t& outSlot) -> bool {
-		if (!IsString(nameValue))
-		{
-			RuntimeError("Global variable name must be a string.");
-			return false;
-		}
-
-		StringValue* stringValue = static_cast<StringValue*>(nameValue.value);
-		size_t cachedSlot = stringValue->cachedGlobalSlot;
-		if (cachedSlot != INVALID_GLOBAL_SLOT && cachedSlot < globalSlots.size())
-		{
-			outSlot = cachedSlot;
-			return true;
-		}
-
-		auto it = globalNameToSlot.find(stringValue->value);
-		if (it == globalNameToSlot.end())
-		{
-			RuntimeError("Undefined global variable '%s'.", stringValue->value.c_str());
-			return false;
-		}
-
-		outSlot = it->second;
-		if (outSlot >= globalSlots.size())
-		{
-			RuntimeError("Undefined global variable '%s'.", stringValue->value.c_str());
-			return false;
-		}
-
-		stringValue->cachedGlobalSlot = outSlot;
-		return true;
-	};
-
 	while (frames[frameCount - 1].function.chunk->code)
 	{
 		if (frames[frameCount - 1].ip >= frames[frameCount - 1].function.chunk->code + frames[frameCount - 1].function.chunk->count)
@@ -382,7 +398,7 @@ InterpretResult VM::Run()
 		}
 
 #ifdef DEBUG_TRACE_EXECUTION
-		frames[frameCount - 1].function.chunk->DisassembleInstruction((uint32_t)(frames[frameCount - 1].ip - frames[frameCount - 1].function.chunk->code));
+		frames[frameCount - 1].function.chunk->DisassembleInstruction((uint32_t)(frames[frameCount - 1].ip - frames[frameCount - 1].function.chunk->code), frameCount - 1);
 #endif
 
 		uint8_t opCode = READ_BYTE();
@@ -492,7 +508,7 @@ InterpretResult VM::Run()
 					nameValue = READ_LONG_CONSTANT();
 
 				size_t slot;
-				if (!RESOLVE_OR_CREATE_GLOBAL_SLOT(nameValue, slot))
+				if (!ResolveOrCreateGlobalSlot(nameValue, slot))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -510,7 +526,7 @@ InterpretResult VM::Run()
 					nameValue = READ_LONG_CONSTANT();
 
 				size_t slot;
-				if (!RESOLVE_EXISTING_GLOBAL_SLOT(nameValue, slot))
+				if (!ResolveExistingGlobalSlot(nameValue, slot))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -528,7 +544,7 @@ InterpretResult VM::Run()
 					nameValue = READ_LONG_CONSTANT();
 
 				size_t slot;
-				if (!RESOLVE_EXISTING_GLOBAL_SLOT(nameValue, slot))
+				if (!ResolveExistingGlobalSlot(nameValue, slot))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -540,6 +556,7 @@ InterpretResult VM::Run()
 			case OP_GET_LOCAL_LONG:
 			{
 				uint32_t slot = (opCode == OP_GET_LOCAL) ? READ_LOCAL_SLOT() : READ_LONG_LOCAL_SLOT();
+				// Local slots are addressed relative to the current frame's base slot.
 				if (frames[frameCount - 1].slots == nullptr || slot >= (uint32_t)(stackTop - frames[frameCount - 1].slots))
 				{
 					RuntimeError("Local slot %d out of range.", slot);
@@ -552,6 +569,7 @@ InterpretResult VM::Run()
 			case OP_SET_LOCAL_LONG:
 			{
 				uint32_t slot = (opCode == OP_SET_LOCAL) ? READ_LOCAL_SLOT() : READ_LONG_LOCAL_SLOT();
+				// Writing through the frame base updates the live local variable in place.
 				if (frames[frameCount - 1].slots == nullptr || slot >= (uint32_t)(stackTop - frames[frameCount - 1].slots))
 				{
 					RuntimeError("Local slot out of range.");
@@ -581,9 +599,31 @@ InterpretResult VM::Run()
 				frames[frameCount - 1].ip -= offset;
 				break;
 			}
+			case OP_CALL:
+			{
+				uint8_t argCount = READ_BYTE();
+				// The callee sits below its arguments on the stack.
+				VMValue callee = Peek(argCount);
+				if (!Call(callee, argCount))
+				{
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				break;
+			}
 			case OP_RETURN:
 			{
-				return INTERPRET_OK;
+				CallFrame* frame = &frames[frameCount - 1];
+				VMValue returnValue = Pop();
+				if (frameCount == 1)
+				{
+					ResetStack();
+					return INTERPRET_OK;
+				}
+				// Restore the stack to the callee slot so the caller's locals stay intact.
+				stackTop = frame->slots;
+				*stackTop++ = returnValue;
+				--frameCount;
+				break;
 			}
 		}
 	}
@@ -591,14 +631,78 @@ InterpretResult VM::Run()
 	return INTERPRET_RUNTIME_ERROR;
 }
 
-InterpretResult VM::Interpret(Chunk* inChunk)
+InterpretResult VM::Interpret(VMValue function)
 {
 	frameCount = 0;
-	CallFrame* frame = &frames[frameCount++];
-	frame->function = VMValue(nullptr, inChunk);
-	frame->ip = inChunk->code;
-	frame->slots = stacks;
+	Push(function);
+	if (!Call(function, 0))
+	{
+		return INTERPRET_RUNTIME_ERROR;
+	}
 	return Run();
+}
+
+bool VM::Call(VMValue function, int argCount)
+{
+	if (!function.value)
+	{
+		RuntimeError("Can't call a non-function value.");
+		return false;
+	}
+
+	Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(function.value);
+	int expectedArgCount = functionValue->Arity();
+	if (argCount != expectedArgCount)
+	{
+		RuntimeError("Expected %d arguments but got %d.", expectedArgCount, argCount);
+		return false;
+	}
+
+	if (functionValue->GetType() == Compiler::VM_FUNC_NATIVE)
+	{
+		Compiler::NativeFunctionValue* nativeFunction = static_cast<Compiler::NativeFunctionValue*>(function.value);
+		VMValue result = nativeFunction->function(argCount, stackTop - argCount);
+		// Pop arguments and the callee
+		stackTop -= argCount + 1;
+		// Push the native function result onto the stack so it can be used by caller frames.
+		Push(result);
+	}
+	else
+	{
+		if (!function.chunk)
+		{
+			RuntimeError("Can only call functions with bytecode.");
+			return false;
+		}
+
+		if (frameCount >= FRAMES_MAX)
+		{
+			RuntimeError("Stack overflow: too many nested calls.");
+			return false;
+		}
+
+		CallFrame newFrame;
+		newFrame.function = function;
+		newFrame.ip = newFrame.function.chunk->code;
+		// Frame slots start at the callee slot, so locals can index from that base.
+		newFrame.slots = stackTop - argCount - 1;
+		frames[frameCount++] = newFrame;
+	}
+
+	return true;
+}
+
+void VM::DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity)
+{
+	size_t slot = -1;
+	if (ResolveOrCreateGlobalSlot(VMValue::Create(StringValue::CreateRaw(name)), slot))
+	{
+		globalSlots[slot] = VMValue::Create(new Compiler::NativeFunctionValue(name, function, arity));
+	}
+	else
+	{
+		RuntimeError("Failed to define native function '%s'.", name.c_str());
+	}
 }
 
 InterpretResult VM::Interpret(const char* source)
@@ -620,10 +724,11 @@ InterpretResult VM::Interpret(const char* source)
 	Push(compiledFunction);
 
 	frameCount = 0;
-	CallFrame* frame = &frames[frameCount++];
-	frame->function = VMValue(nullptr, compiledFunction.chunk);
-	frame->ip = compiledFunction.chunk->code;
-	frame->slots = stacks;
+	if (!Call(compiledFunction, 0))
+	{
+		localChunk.Free();
+		return INTERPRET_RUNTIME_ERROR;
+	}
 
 	InterpretResult result = Run();
 

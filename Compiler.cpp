@@ -1,7 +1,7 @@
 #include "Compiler.h"
 #include "LoxCallable.h"
 
-// #define DEBUG_PRINT_CODE
+#define DEBUG_PRINT_CODE
 
 Compiler::Compiler(Chunk* chunk)
 	: ctx(&ownCtx)
@@ -39,7 +39,7 @@ Compiler::~Compiler()
 
 Chunk* Compiler::CurrentChunk()
 {
-    return function.chunk;
+	return function.chunk;
 }
 
 void Compiler::Init(FunctionType inType, const std::string& name)
@@ -149,6 +149,7 @@ void Compiler::EndScope()
 	scopeDepth--;
 	while (!locals.empty() && locals.back().depth > scopeDepth)
 	{
+		// Drop locals that go out of scope so their stack slots are reclaimed.
 		EmitByte(OP_POP);
 		locals.pop_back();
 	}
@@ -190,6 +191,10 @@ void Compiler::Statement()
 		Block();	
 		EndScope();
 	}
+	else if (Match(RETURN))
+	{
+		ReturnStatement();
+	}
 	else
 	{
 		ExpressionStatement();
@@ -205,6 +210,7 @@ void Compiler::VarDeclaration(bool constant)
 	}
 	else
 	{
+		// Uninitialized variables default to nil.
 		EmitByte(OP_NIL);
 	}
 	Consume(SEMICOLON, "Expect ';' after variable declaration.");
@@ -236,13 +242,35 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 	// Token consumption here uses *this* (the enclosing compiler) — since
 	// sub shares ctx, nextToken advances for both simultaneously.
 	Consume(LEFT_PAREN, "Expect '(' after function name.");
+
+	while (!Check(RIGHT_PAREN) && !Check(END_OF_FILE))
+	{
+		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(sub.function.value);
+		fnValue->arity++;
+		if (fnValue->arity > 255)
+		{
+			sub.ErrorAtCurrent("Can't have more than 255 parameters.");
+		}
+		int32_t parameter = sub.ParseVariable("Expect parameter name.", false);
+		sub.DefineVariable(parameter, false);
+		if (!Match(COMMA))
+		{
+			break;
+		}
+	}
+
 	Consume(RIGHT_PAREN, "Expect ')' after parameters. (Currently no parameters are supported)");
 	Consume(LEFT_BRACE, "Expect '{' before function body.");
 	sub.Block();
 
 	VMValue fn = sub.EndCompiler();
-	// Emit the compiled function as a constant into THIS compiler's chunk.
-	EmitConstant(fn);
+	// Transfer chunk ownership to the VM GC before sub goes out of scope.
+	// sub.ownsChunk=true would call ownedChunk->Free()/delete in ~Compiler(),
+	// leaving a dangling pointer in this compiler's constants table.
+	// VMValue::Create links the chunk (and fn.value) into vm.objects so
+	// VM::Free() will clean them up at the right time.
+	sub.ownsChunk = false;
+	EmitConstant(VMValue::Create(fn.value, fn.chunk));
 }
 
 void Compiler::IfStatement()
@@ -251,10 +279,12 @@ void Compiler::IfStatement()
 	Expression();
 	Consume(RIGHT_PAREN, "Expect ')' after condition.");
 	int32_t thenJump = EmitJump(OP_JUMP_IF_FALSE);
+	// The condition value is only needed for the branch test.
 	EmitByte(OP_POP);
 	Statement();
 	int32_t elseJump = EmitJump(OP_JUMP);
 	PatchJump(thenJump);
+	// Remove the condition before entering the else branch.
 	EmitByte(OP_POP);
 	if (Match(ELSE))
 	{
@@ -274,10 +304,12 @@ void Compiler::WhileStatement()
 	Expression();
 	Consume(RIGHT_PAREN, "Expect ')' after condition.");
 	int32_t exitJump = EmitJump(OP_JUMP_IF_FALSE);
+	// Keep the loop condition only long enough to decide whether to enter the body.
 	EmitByte(OP_POP);
 	Statement();
 	EmitLoop(loopStart);
 	PatchJump(exitJump);
+	// Discard the false condition when the loop terminates.
 	EmitByte(OP_POP);
 	// Patch any pending break jumps to jump here (after the loop).
 	PatchBreaks(loopStart);
@@ -327,11 +359,13 @@ void Compiler::SwitchStatement()
 	{
 		if (Match(CASE))
 		{
+			// Duplicate the switch expression so each case can compare against it.
 			EmitByte(OP_DUP);
 			Expression();
 			Consume(COLON, "Expect ':' after case value.");
 			EmitByte(OP_EQUAL);
 			int32_t caseJump = EmitJump(OP_JUMP_IF_FALSE);
+			// Failed comparison consumes the boolean result.
 			EmitByte(OP_POP);
 			if (lastThroughJump != -1)
 			{
@@ -344,6 +378,7 @@ void Compiler::SwitchStatement()
 			}
 			lastThroughJump = EmitJump(OP_JUMP);
 			PatchJump(caseJump);
+			// Remove the boolean result before executing the matched case body.
 			EmitByte(OP_POP);
 		}
 		else if (Match(DEFAULT))
@@ -380,6 +415,7 @@ void Compiler::SwitchStatement()
 	// Patch break jumps BEFORE emitting the switch-expression pop,
 	// so break also cleans up the switch value from the stack.
 	PatchBreaks(loopStart);
+	// Pop the original switch expression after all cases have finished.
 	EmitByte(OP_POP);
 	currentLoopStart = outterLoopStart;
 }
@@ -417,6 +453,7 @@ void Compiler::ForStatement()
 		Consume(SEMICOLON, "Expect ';' after loop condition.");
 	}
 	int32_t exitJump = EmitJump(OP_JUMP_IF_FALSE);
+	// Drop the condition after the branch decision.
 	EmitByte(OP_POP);
 	int32_t bodyJump = EmitJump(OP_JUMP);
 	// Increment.
@@ -432,18 +469,41 @@ void Compiler::ForStatement()
 		EmitByte(OP_POP);
 		Consume(RIGHT_PAREN, "Expect ')' after for clauses.");
 	}
+	// Jump back to the loop condition before compiling the body.
 	EmitLoop(loopStart);
 	PatchJump(bodyJump);
 	currentLoopContinue = (uint32_t)incrementStart;
 	Statement();
+	// The increment section runs after the body, then loops back to the condition.
 	EmitLoop(incrementStart);
 	PatchJump(exitJump);
+	// Remove the false condition when the loop exits.
 	EmitByte(OP_POP);
 	// Patch any pending break jumps to jump here (after the loop).
 	PatchBreaks(loopStart);
 	currentLoopStart = outterLoopStart;
 	currentLoopContinue = outterLoopContinue;
 	EndScope();
+}
+
+void Compiler::ReturnStatement()
+{
+	if (type == TYPE_SCRIPT)
+	{
+		Error("Can't return from top-level code.");
+	}
+	if (Match(SEMICOLON))
+	{
+		// A bare return becomes an implicit nil return value.
+		EmitByte(OP_NIL);
+	}
+	else
+	{
+		Expression();
+		Consume(SEMICOLON, "Expect ';' after return value.");
+	}
+	// Return always leaves through OP_RETURN with the value on top of the stack.
+	EmitByte(OP_RETURN);
 }
 
 void Compiler::PrintStatement()
@@ -524,7 +584,11 @@ void Compiler::Synchronize()
 
 VMValue Compiler::EndCompiler()
 {
-	EmitByte(OP_RETURN);
+	if (CurrentChunk()->GetSize() == 0 || CurrentChunk()->code[CurrentChunk()->GetSize() - 1] != OP_RETURN)
+	{
+		EmitByte(OP_NIL);
+		EmitByte(OP_RETURN);
+	}
 #ifdef DEBUG_PRINT_CODE	
 	if (!parser.hadError)
 	{
@@ -658,7 +722,9 @@ void Compiler::Equality()
 
 void Compiler::And()
 {
+	// Short-circuit: if the left side is false, skip the right side.
 	int32_t andJump = EmitJump(OP_JUMP_IF_FALSE);
+	// The left operand is no longer needed once the branch is decided.
 	EmitByte(OP_POP);
 	ParsePrecedence(Compiler::PREC_AND);
 	PatchJump(andJump);
@@ -676,9 +742,11 @@ void Compiler::Or()
 	EmitByte(OP_NOT);
 	PatchJump(endJump);
 	*/
+	// Short-circuit: if the left side is true, skip evaluating the right side.
 	int32_t orJump = EmitJump(OP_JUMP_IF_FALSE);
 	int32_t endJump = EmitJump(OP_JUMP);
 	PatchJump(orJump);
+	// Drop the left operand before evaluating the right-hand expression.
 	EmitByte(OP_POP);
 	ParsePrecedence(Compiler::PREC_OR);
 	PatchJump(endJump);
@@ -742,6 +810,32 @@ void Compiler::NamedVariable(bool canAssign)
 	}
 }
 
+uint8_t Compiler::ArgumentList()
+{
+	uint8_t argCount = 0;
+	if (!Check(RIGHT_PAREN))
+	{
+		do
+		{
+			if (argCount == 255)
+			{
+				ErrorAtCurrent("Can't have more than 255 arguments.");
+				return argCount;
+			}
+			argCount += 1;
+			Expression();
+		} while (Match(COMMA));
+	}
+	Consume(RIGHT_PAREN, "Expect ')' after arguments.");
+	return argCount;
+}
+
+void Compiler::Call()
+{
+	uint8_t argCount = ArgumentList();
+	EmitBytes(OP_CALL, argCount);
+}
+
 // --- Token Helpers ---
 
 Token Compiler::ScanToken()
@@ -795,7 +889,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 	{
 		rules.resize((size_t)ERROR + 1);
 
-		rules[LEFT_PAREN]    = { &Compiler::Grouping, nullptr,            PREC_NONE };
+		rules[LEFT_PAREN]    = { &Compiler::Grouping, &Compiler::Call,    PREC_CALL };
 		rules[RIGHT_PAREN]   = { nullptr,             nullptr,            PREC_NONE };
 		rules[LEFT_BRACE]    = { nullptr,             nullptr,            PREC_NONE };
 		rules[RIGHT_BRACE]   = { nullptr,             nullptr,            PREC_NONE };
@@ -996,6 +1090,7 @@ int Compiler::ResolveLocal(const Token& name)
 
 int32_t Compiler::EmitJump(uint8_t instruction)
 {
+	// Reserve two bytes for the jump distance and patch them once the target is known.
 	EmitByte(instruction);
 	EmitByte(0xFF);
 	EmitByte(0xFF);
@@ -1009,12 +1104,14 @@ void Compiler::PatchJump(int32_t offset)
 	{
 		Error("Too much code to jump over.");
 	}
+	// Write the final forward jump distance into the reserved operand bytes.
 	CurrentChunk()->code[offset] = (uint8_t)((jump >> 8) & 0xFF);
 	CurrentChunk()->code[offset + 1] = (uint8_t)((jump >> 0) & 0xFF);
 }
 
 void Compiler::EmitLoop(int32_t loopStart)
 {
+	// Emit a backward jump to the loop header.
 	EmitByte(OP_LOOP);
 	int32_t offset = (int32_t)CurrentChunk()->GetSize() - loopStart + 2;
 	if (offset > 0xFFFF)

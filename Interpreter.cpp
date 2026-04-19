@@ -2,6 +2,7 @@
 #include "Environment.h"
 #include "LoxCallable.h"
 #include <assert.h>
+#include <ctime>
 
 #define LOOP_CONTROL_FAST_RETURN if (loopControl != LOOP_NONE) { return true; }
 #define ERROR_CONTROL_FAST_RETURN if (Lox::GetInstance().HasRuntimeError()) { return true; }
