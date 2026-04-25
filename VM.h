@@ -16,9 +16,14 @@ enum InterpretResult
 
 struct CallFrame
 {
-	VMValue function;
+	VMValue closure;
 	uint8_t* ip;
 	VMValue* slots;
+
+	inline Chunk* GetChunk() const
+	{
+		return static_cast<Compiler::VMClosureValue*>(closure.value)->function.chunk;
+	}
 };
 
 class VM
@@ -77,6 +82,7 @@ public:
 	// VM lifecycle
 	void Init();
 	void Free();
+	static VMValue Create(Value* value, Chunk* chunk = nullptr);
 
 	// Execution
 	InterpretResult Run();

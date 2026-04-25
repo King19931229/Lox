@@ -1,17 +1,6 @@
 #include "Chunk.h"
-#include "VM.h"
 #include <cstdio>
 #include <iostream>
-
-VMValue VMValue::Create(Value* value, Chunk* chunk)
-{
-	if (!value) return VMValue(nullptr, nullptr);
-	VM& vm = VM::GetInstance();
-	VMValue* node = new VMValue(value, chunk);
-	node->next = vm.objects;
-	vm.objects = node;
-	return VMValue(value, chunk);
-}
 
 static void PrintIndent(int32_t indent)
 {
@@ -259,6 +248,8 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 			return JumpInstruction("OP_LOOP", -1, offset);
 		case OP_CALL:
 			return ByteInstruction("OP_CALL", offset);
+		case OP_CLOSURE:
+			return SimpleInstruction("OP_CLOSURE", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;
@@ -271,16 +262,7 @@ void Chunk::DisassembleConstant(int32_t index, int32_t indent)
 	printf("%4d '", index);
 	PrintValue(constants.values[index]);
 	printf("'");
-	/*if (constants.values[index].chunk)
-	{
-		printf(" ->\n");
-		std::string nestedName = constants.values[index].value ? static_cast<std::string>(*constants.values[index].value) : std::string("<chunk>");
-		constants.values[index].chunk->Disassemble(nestedName.c_str(), indent + 1);
-	}
-	else*/
-	{
-		printf("\n");
-	}
+	printf("\n");
 }
 
 void Chunk::Disassemble(const char* name, int32_t indent)

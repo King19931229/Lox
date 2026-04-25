@@ -1,5 +1,6 @@
 #include "Compiler.h"
 #include "LoxCallable.h"
+#include "VM.h"
 
 #define DEBUG_PRINT_CODE
 
@@ -20,7 +21,6 @@ Compiler::Compiler(ParseContext* sharedCtx, FunctionType fnType, const std::stri
 	, tokens(sharedCtx->tokens)
 	, nextToken(sharedCtx->nextToken)
 	, globalConstants(sharedCtx->globalConstants)
-	, ownsChunk(true)
 {
 	ownedChunk = new Chunk();
 	ownedChunk->Init();
@@ -30,11 +30,6 @@ Compiler::Compiler(ParseContext* sharedCtx, FunctionType fnType, const std::stri
 
 Compiler::~Compiler()
 {
-	if (ownsChunk && ownedChunk)
-	{
-		ownedChunk->Free();
-		delete ownedChunk;
-	}
 }
 
 Chunk* Compiler::CurrentChunk()
@@ -264,13 +259,10 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 	sub.Block();
 
 	VMValue fn = sub.EndCompiler();
-	// Transfer chunk ownership to the VM GC before sub goes out of scope.
-	// sub.ownsChunk=true would call ownedChunk->Free()/delete in ~Compiler(),
-	// leaving a dangling pointer in this compiler's constants table.
-	// VMValue::Create links the chunk (and fn.value) into vm.objects so
-	// VM::Free() will clean them up at the right time.
-	sub.ownsChunk = false;
-	EmitConstant(VMValue::Create(fn.value, fn.chunk));
+	// Let the VM take ownership of the compiled function's chunk and value, which are heap-allocated.
+	fn = VM::Create(fn.value, fn.chunk);
+	EmitConstant(fn);
+	EmitByte(OP_CLOSURE);
 }
 
 void Compiler::IfStatement()
@@ -607,11 +599,11 @@ void Compiler::Number(bool /*canAssign*/)
 	VMValue value;
 	if (lexeme.find('.') != std::string::npos)
 	{
-		value = VMValue::Create(FloatValue::CreateRaw(std::stof(lexeme)));
+		value = VM::Create(FloatValue::CreateRaw(std::stof(lexeme)));
 	}
 	else
 	{
-		value = VMValue::Create(IntValue::CreateRaw(std::stoi(lexeme)));
+		value = VM::Create(IntValue::CreateRaw(std::stoi(lexeme)));
 	}
 	EmitConstant(value);
 }
@@ -632,7 +624,7 @@ void Compiler::Literal(bool /*canAssign*/)
 void Compiler::String(bool /*canAssign*/)
 {
 	const std::string& lexeme = parser.previous.lexeme;
-	EmitConstant(VMValue::Create(StringValue::CreateRaw(lexeme)));
+	EmitConstant(VM::Create(StringValue::CreateRaw(lexeme)));
 }
 
 void Compiler::Grouping(bool /*canAssign*/)
@@ -991,7 +983,7 @@ uint32_t Compiler::MakeConstant(VMValue value)
 
 uint32_t Compiler::IdentifierConstant(const Token& name)
 {
-	return MakeConstant(VMValue::Create(StringValue::CreateRaw(name.lexeme)));
+	return MakeConstant(VM::Create(StringValue::CreateRaw(name.lexeme)));
 }
 
 void Compiler::DefineVariable(uint32_t global, bool constant)

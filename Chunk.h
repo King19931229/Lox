@@ -42,6 +42,7 @@ enum OpCode
 	OP_JUMP,
 	OP_LOOP,
 	OP_CALL,
+	OP_CLOSURE,
 	OP_RETURN,
 };
 
@@ -99,7 +100,6 @@ void free_array_impl(T* pointer, size_t old_count)
 #define GROW_ARRAY(type, pointer, oldCount, newCount) grow_array_impl(pointer, oldCount, newCount)
 #define FREE_ARRAY(type, pointer, oldCount) free_array_impl(pointer, oldCount)
 
-class VM;
 struct Chunk;
 
 struct VMValue
@@ -118,7 +118,6 @@ struct VMValue
 		, chunk(inChunk)
 		, next(nullptr)
 	{}
-	static VMValue Create(Value* value, Chunk* chunk = nullptr);
 };
 
 struct VMValueArray

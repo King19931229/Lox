@@ -16,6 +16,7 @@ public:
 		VM_FUNC_SCRIPT,
 		VM_FUNC_FUNCTION,
 		VM_FUNC_NATIVE,
+		VM_FUNC_CLOSURE
 	};
 	
 	friend class VM;
@@ -62,6 +63,30 @@ public:
 		int Arity() const override { return arity; }
 		operator std::string() const override { return "<native fn " + name + ">"; }
 		VMFunctionType GetType() const override { return VM_FUNC_NATIVE; }
+	};
+
+	// Placeholder for a closure value, which wraps a function and its upvalues.
+	// The VM will call the wrapped function and manage the upvalues as needed.
+	struct VMClosureValue : public VMFunctionBase
+	{
+		VMValue function;
+		std::vector<VMValue> upvalues;
+		explicit VMClosureValue(VMValue inFunction, std::vector<VMValue> inUpvalues)
+			: function(inFunction), upvalues(std::move(inUpvalues))
+		{
+			this->type = TYPE_CALLABLE;
+		}
+		int Arity() const override
+		{
+			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.value);
+			return functionValue->Arity();
+		}
+		operator std::string() const override
+		{
+			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.value);
+			return "<closure " + functionValue->operator std::string() + ">";
+		}
+		VMFunctionType GetType() const override { return VM_FUNC_CLOSURE; }
 	};
 private:
 	enum Precedence
@@ -121,8 +146,7 @@ private:
 	ParseContext  ownCtx;   // storage; only meaningful for the root compiler
 	ParseContext* ctx;
 
-	Chunk* ownedChunk = nullptr;  // non-null only for sub-compilers that own their chunk
-	bool   ownsChunk  = false;    // true if this compiler is responsible for freeing ownedChunk      // always valid — == &ownCtx for root, parent ptr for subs
+	Chunk* ownedChunk = nullptr;  // non-null only for sub-compilers (chunk lifetime managed by VM GC)
 
 	// Reference aliases into *ctx so every method in the .cpp can keep its
 	// existing "parser.xxx", "tokens[i]", "nextToken", "globalConstants" spelling.
