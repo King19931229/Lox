@@ -265,40 +265,21 @@ void TestChunk()
 
 int main(int argc, char* argv[])
 {
-#if 1
+	#if 1
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
-	fun func()
 	{
-		print "in func";
+		var a = 1;
+		var b = 2;
+		var c = 3;
+		c = a + b * c;
 	}
-	fun test(c, d)
-	{
-		func();
-		var a = 1 + c * d + 2;
-		switch (a)
-		{
-			case 7:
-				print "seven";
-				print "seven again";
-				//break;
-			case 9:
-				print "nine";
-				//break;
-			default:
-				print "other";
-		}
-		return a;
-	}
-	test(1,1);
-	print clock();
-	print clock();
 	)");
 	vm.Free();
-#endif
+	#endif
 
-#if 0
+#if 1
 	TestUnit::RunVMTest();
 #endif
 

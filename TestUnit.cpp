@@ -19,6 +19,32 @@
 #include <windows.h> // 包含 Windows API 用于控制台颜色
 #endif
 
+#ifdef _WIN32
+struct ConsoleColorGuard
+{
+	HANDLE hConsole;
+	WORD savedAttributes;
+	static constexpr WORD kCleanColor = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+
+	ConsoleColorGuard()
+		: hConsole(GetStdHandle(STD_OUTPUT_HANDLE))
+		, savedAttributes(kCleanColor)
+	{
+		// 不依赖 GetConsoleScreenBufferInfo 的返回值（可能被上次崩溃污染），
+		// 直接强制重置为白色，保证测试输出可见颜色是干净的。
+		SetConsoleTextAttribute(hConsole, kCleanColor);
+	}
+
+	~ConsoleColorGuard()
+	{
+		SetConsoleTextAttribute(hConsole, kCleanColor);
+	}
+
+	ConsoleColorGuard(const ConsoleColorGuard&) = delete;
+	ConsoleColorGuard& operator=(const ConsoleColorGuard&) = delete;
+};
+#endif
+
 void TestUnit::RunScannerTest()
 {
 	std::string source = R"lox(
@@ -188,13 +214,9 @@ void TestUnit::RunExpressionInterpreterTest()
 	Interpreter interpreter;
 	Resolver resolver(&interpreter);
 #ifdef _WIN32
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes = 0;
-	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
-	{
-		saved_attributes = consoleInfo.wAttributes;
-	}
+	ConsoleColorGuard colorGuard;
+	HANDLE& hConsole = colorGuard.hConsole;
+	WORD& saved_attributes = colorGuard.savedAttributes;
 #endif
 
 	for (const auto& test : testCases)
@@ -231,7 +253,8 @@ void TestUnit::RunExpressionInterpreterTest()
 #endif
 			printf("  [FAIL] Expected: %s, Got: %s\n", test.second.c_str(), resultString.c_str());
 #ifdef _WIN32
-			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (IsDebuggerPresent()) __debugbreak();
+			SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");
@@ -428,13 +451,9 @@ void TestUnit::RunStatementInterpreterTest()
 	};
 
 #ifdef _WIN32
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes = 0;
-	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
-	{
-		saved_attributes = consoleInfo.wAttributes;
-	}
+	ConsoleColorGuard colorGuard;
+	HANDLE& hConsole = colorGuard.hConsole;
+	WORD& saved_attributes = colorGuard.savedAttributes;
 #endif
 
 	for (const auto& test : testCases)
@@ -458,7 +477,8 @@ void TestUnit::RunStatementInterpreterTest()
 #endif
 			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
 #ifdef _WIN32
-			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (IsDebuggerPresent()) __debugbreak();
+			SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");
@@ -500,13 +520,9 @@ void TestUnit::RunFunctionInterpreterTest()
 	};
 
 #ifdef _WIN32
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes = 0;
-	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
-	{
-		saved_attributes = consoleInfo.wAttributes;
-	}
+	ConsoleColorGuard colorGuard;
+	HANDLE& hConsole = colorGuard.hConsole;
+	WORD& saved_attributes = colorGuard.savedAttributes;
 #endif
 
 	for (const auto& test : testCases)
@@ -530,7 +546,8 @@ void TestUnit::RunFunctionInterpreterTest()
 #endif
 			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
 #ifdef _WIN32
-			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (IsDebuggerPresent()) __debugbreak();
+			SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");
@@ -577,13 +594,9 @@ void TestUnit::RunClassInterpreterTest()
 	};
 
 #ifdef _WIN32
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes = 0;
-	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
-	{
-		saved_attributes = consoleInfo.wAttributes;
-	}
+	ConsoleColorGuard colorGuard;
+	HANDLE& hConsole = colorGuard.hConsole;
+	WORD& saved_attributes = colorGuard.savedAttributes;
 #endif
 
 	for (const auto& test : testCases)
@@ -607,7 +620,8 @@ void TestUnit::RunClassInterpreterTest()
 #endif
 			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
 #ifdef _WIN32
-			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (IsDebuggerPresent()) __debugbreak();
+			SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");
@@ -693,7 +707,7 @@ void TestUnit::RunVMTest()
 
 		// 函数调用错误路径
 		{ "fun add(a, b) { return a + b; } add(1);", "Expected 2 arguments but got 1.", INTERPRET_RUNTIME_ERROR },
-		{ "var value = 123; value();", "Can only call functions with bytecode.", INTERPRET_RUNTIME_ERROR },
+		{ "var value = 123; value();", "Can't call a non-function value.", INTERPRET_RUNTIME_ERROR },
 
 		// 错误路径：运行时错误
 		{ "print 1 / 0;", "Division by zero.", INTERPRET_RUNTIME_ERROR },
@@ -736,13 +750,9 @@ void TestUnit::RunVMTest()
 	};
 
 #ifdef _WIN32
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes = 0;
-	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
-	{
-		saved_attributes = consoleInfo.wAttributes;
-	}
+	ConsoleColorGuard colorGuard;
+	HANDLE& hConsole = colorGuard.hConsole;
+	WORD& saved_attributes = colorGuard.savedAttributes;
 #endif
 
 	for (const auto& test : testCases)
@@ -775,7 +785,8 @@ void TestUnit::RunVMTest()
 			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
 			printf("  [INFO] Result code: %d\n", (int)runResult.result);
 #ifdef _WIN32
-			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (IsDebuggerPresent()) __debugbreak();
+			SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");
@@ -859,13 +870,9 @@ void TestUnit::RunResolverTest()
 	};
 
 #ifdef _WIN32
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	WORD saved_attributes = 0;
-	CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-	if (GetConsoleScreenBufferInfo(hConsole, &consoleInfo))
-	{
-		saved_attributes = consoleInfo.wAttributes;
-	}
+	ConsoleColorGuard colorGuard;
+	HANDLE& hConsole = colorGuard.hConsole;
+	WORD& saved_attributes = colorGuard.savedAttributes;
 #endif
 
 	for (const auto& test : testCases)
@@ -888,7 +895,8 @@ void TestUnit::RunResolverTest()
 #endif
 			printf("  [FAIL] Expected: '%s', Got: '%s'\n", expectedEscaped.c_str(), gotEscaped.c_str());
 #ifdef _WIN32
-			if (saved_attributes != 0) SetConsoleTextAttribute(hConsole, saved_attributes);
+			if (IsDebuggerPresent()) __debugbreak();
+			SetConsoleTextAttribute(hConsole, saved_attributes);
 #endif
 		}
 		printf("----------------------------------------\n\n");

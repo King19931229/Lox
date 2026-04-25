@@ -1,6 +1,7 @@
 #pragma once
 #include "Chunk.h"
 #include "Compiler.h"
+#include <cstdarg>
 #include <unordered_map>
 #include <vector>
 
@@ -45,21 +46,23 @@ protected:
 	void ResetStack();
 	void AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks);
 	void Push(VMValue value);
-	InterpretResult Negate();
+	InterpretResult Negate(const uint8_t* instructionIp = nullptr);
 	VMValue Pop();
 	VMValue Peek(int32_t distance);
 	void Free(VMValue* object);
 
 	// Resolve a global variable slot by name, creating a new slot if it doesn't exist. Returns true on success.
-	bool ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot);
+	bool ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot, const uint8_t* instructionIp = nullptr);
 	// Resolve a global variable slot by name, returning false if it doesn't exist. Returns true on success.
-	bool ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot);
+	bool ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot, const uint8_t* instructionIp = nullptr);
 
 	bool IsNumber(VMValue value);
 	bool IsFalsey(VMValue value);
 	bool IsString(VMValue value);
 
 	void RuntimeError(const char* format, ...);
+	void RuntimeError(const uint8_t* instructionIp, const char* format, ...);
+	void RuntimeErrorImpl(const uint8_t* instructionIp, const char* format, va_list args);
 
 public:
 	static VM& GetInstance()
@@ -78,7 +81,7 @@ public:
 	// Execution
 	InterpretResult Run();
 	// Call a function value with given argument count. Returns true on success.
-	bool Call(VMValue function, int argCount);
+	bool Call(VMValue function, int argCount, const uint8_t* instructionIp = nullptr);
 	InterpretResult Interpret(VMValue function);
 	InterpretResult Interpret(const char* source);
 

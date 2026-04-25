@@ -9,6 +9,7 @@
 #include <chrono>
 
 // #define DEBUG_TRACE_EXECUTION
+// #define USE_LOCAL_IP
 
 namespace
 {
@@ -126,11 +127,11 @@ bool VM::IsString(VMValue value)
 	return value.value && value.value->type == TYPE_STRING;
 }
 
-bool VM::ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot)
+bool VM::ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot, const uint8_t* instructionIp)
 {
 	if (!IsString(nameValue))
 	{
-		RuntimeError("Global variable name must be a string.");
+		RuntimeError(instructionIp, "Global variable name must be a string.");
 		return false;
 	}
 
@@ -162,11 +163,11 @@ bool VM::ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot)
 	return true;
 }
 
-bool VM::ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot)
+bool VM::ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot, const uint8_t* instructionIp)
 {
 	if (!IsString(nameValue))
 	{
-		RuntimeError("Global variable name must be a string.");
+		RuntimeError(instructionIp, "Global variable name must be a string.");
 		return false;
 	}
 
@@ -181,14 +182,14 @@ bool VM::ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot)
 	auto it = globalNameToSlot.find(stringValue->value);
 	if (it == globalNameToSlot.end())
 	{
-		RuntimeError("Undefined global variable '%s'.", stringValue->value.c_str());
+		RuntimeError(instructionIp, "Undefined global variable '%s'.", stringValue->value.c_str());
 		return false;
 	}
 
 	outSlot = it->second;
 	if (outSlot >= globalSlots.size())
 	{
-		RuntimeError("Undefined global variable '%s'.", stringValue->value.c_str());
+		RuntimeError(instructionIp, "Undefined global variable '%s'.", stringValue->value.c_str());
 		return false;
 	}
 
@@ -196,25 +197,56 @@ bool VM::ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot)
 	return true;
 }
 
-void VM::RuntimeError(const char* format, ...)
+void VM::RuntimeErrorImpl(const uint8_t* instructionIp, const char* format, va_list args)
 {
-	// Map the current instruction pointer back to source line/column for diagnostics.
-	CallFrame& currentFrame = frames[frameCount - 1];
-	size_t instruction = (size_t)(currentFrame.ip - currentFrame.function.chunk->code - 1);
-	int32_t line = currentFrame.function.chunk->lines[instruction];
-	int32_t column = currentFrame.function.chunk->columns[instruction];
-	fprintf(stderr, "VM RuntimeError [%d:%d]: ", line, column);
+	int32_t line = 0;
+	int32_t column = 0;
+	const uint8_t* resolvedInstructionIp = instructionIp;
+	if (resolvedInstructionIp == nullptr && frameCount > 0)
+	{
+		resolvedInstructionIp = frames[frameCount - 1].ip;
+	}
 
-	va_list args;
-	va_start(args, format);
+	if (frameCount > 0 && resolvedInstructionIp != nullptr)
+	{
+		CallFrame& currentFrame = frames[frameCount - 1];
+		Chunk* chunk = currentFrame.function.chunk;
+		if (chunk != nullptr && chunk->code != nullptr && chunk->count > 0 && resolvedInstructionIp > chunk->code)
+		{
+			size_t instruction = (size_t)(resolvedInstructionIp - chunk->code - 1);
+			if (instruction >= (size_t)chunk->count)
+			{
+				instruction = (size_t)(chunk->count - 1);
+			}
+			line = chunk->lines[instruction];
+			column = chunk->columns[instruction];
+		}
+	}
+	fprintf(stderr, "VM RuntimeError [%d:%d]: ", line, column);
 	vfprintf(stderr, format, args);
-	va_end(args);
+	fprintf(stderr, "\n");
 
 	ResetStack();
 	frameCount = 0;
 }
 
-InterpretResult VM::Negate()
+void VM::RuntimeError(const char* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	RuntimeErrorImpl(nullptr, format, args);
+	va_end(args);
+}
+
+void VM::RuntimeError(const uint8_t* instructionIp, const char* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	RuntimeErrorImpl(instructionIp, format, args);
+	va_end(args);
+}
+
+InterpretResult VM::Negate(const uint8_t* instructionIp)
 {
 	if (stacks == nullptr || stackTop == stacks)
 	{
@@ -224,7 +256,7 @@ InterpretResult VM::Negate()
 
 	if (!IsNumber(Peek(0)))
 	{
-		RuntimeError("Operand must be a number!");
+		RuntimeError(instructionIp, "Operand must be a number!");
 		return INTERPRET_RUNTIME_ERROR;
 	}
 
@@ -271,13 +303,21 @@ void VM::Free()
 
 InterpretResult VM::Run()
 {
+#ifdef USE_LOCAL_IP
+	uint8_t* ip = frames[frameCount - 1].ip;
+#define IP ip
+#else
+#define IP frames[frameCount - 1].ip
+#endif
+
 	auto READ_BYTE = [&]() -> uint8_t {
-		return *frames[frameCount - 1].ip++;
+		uint8_t byte = *IP++;
+		return byte;
 	};
 
 	auto READ_SHORT = [&]() -> uint16_t {
-		uint16_t value = (*frames[frameCount - 1].ip << 8) | *(frames[frameCount - 1].ip + 1);
-		frames[frameCount - 1].ip += 2;
+		uint16_t value = (*IP << 8) | *(IP + 1);
+		IP += 2;
 		return value;
 	};
 
@@ -307,7 +347,7 @@ InterpretResult VM::Run()
 
 		if (!(IsNumber(a) && IsNumber(b)))
 		{
-			RuntimeError("Operands must be numbers!");
+			RuntimeError(IP, "Operands must be numbers!");
 			return INTERPRET_RUNTIME_ERROR;
 		}
 
@@ -357,7 +397,7 @@ InterpretResult VM::Run()
 			}
 			default:
 				// Handle unknown operation (could throw an exception or abort)
-				RuntimeError("Unknown binary operation!\n");
+				RuntimeError(IP, "Unknown binary operation!\n");
 				return INTERPRET_RUNTIME_ERROR;
 		}
 
@@ -379,7 +419,7 @@ InterpretResult VM::Run()
 		}
 		else
 		{
-			RuntimeError("Operands must be two numbers or two strings for '+'.");
+			RuntimeError(IP, "Operands must be two numbers or two strings for '+'.");
 			return INTERPRET_RUNTIME_ERROR;
 		}
 	};
@@ -392,13 +432,13 @@ InterpretResult VM::Run()
 
 	while (frames[frameCount - 1].function.chunk->code)
 	{
-		if (frames[frameCount - 1].ip >= frames[frameCount - 1].function.chunk->code + frames[frameCount - 1].function.chunk->count)
+		if (IP >= frames[frameCount - 1].function.chunk->code + frames[frameCount - 1].function.chunk->count)
 		{
 			break;
 		}
 
 #ifdef DEBUG_TRACE_EXECUTION
-		frames[frameCount - 1].function.chunk->DisassembleInstruction((uint32_t)(frames[frameCount - 1].ip - frames[frameCount - 1].function.chunk->code), frameCount - 1);
+		frames[frameCount - 1].function.chunk->DisassembleInstruction((uint32_t)(IP - frames[frameCount - 1].function.chunk->code), frameCount - 1);
 #endif
 
 		uint8_t opCode = READ_BYTE();
@@ -432,7 +472,7 @@ InterpretResult VM::Run()
 			}
 			case OP_NEGATE:
 			{
-				InterpretResult result = Negate();
+				InterpretResult result = Negate(IP);
 				if (result != INTERPRET_OK)
 				{
 					return result;
@@ -508,7 +548,7 @@ InterpretResult VM::Run()
 					nameValue = READ_LONG_CONSTANT();
 
 				size_t slot;
-				if (!ResolveOrCreateGlobalSlot(nameValue, slot))
+				if (!ResolveOrCreateGlobalSlot(nameValue, slot, IP))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -526,7 +566,7 @@ InterpretResult VM::Run()
 					nameValue = READ_LONG_CONSTANT();
 
 				size_t slot;
-				if (!ResolveExistingGlobalSlot(nameValue, slot))
+				if (!ResolveExistingGlobalSlot(nameValue, slot, IP))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -544,7 +584,7 @@ InterpretResult VM::Run()
 					nameValue = READ_LONG_CONSTANT();
 
 				size_t slot;
-				if (!ResolveExistingGlobalSlot(nameValue, slot))
+				if (!ResolveExistingGlobalSlot(nameValue, slot, IP))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -559,7 +599,7 @@ InterpretResult VM::Run()
 				// Local slots are addressed relative to the current frame's base slot.
 				if (frames[frameCount - 1].slots == nullptr || slot >= (uint32_t)(stackTop - frames[frameCount - 1].slots))
 				{
-					RuntimeError("Local slot %d out of range.", slot);
+					RuntimeError(IP, "Local slot %d out of range.", slot);
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				Push(frames[frameCount - 1].slots[slot]);
@@ -572,7 +612,7 @@ InterpretResult VM::Run()
 				// Writing through the frame base updates the live local variable in place.
 				if (frames[frameCount - 1].slots == nullptr || slot >= (uint32_t)(stackTop - frames[frameCount - 1].slots))
 				{
-					RuntimeError("Local slot out of range.");
+					RuntimeError(IP, "Local slot out of range.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				frames[frameCount - 1].slots[slot] = Peek(0);
@@ -583,20 +623,20 @@ InterpretResult VM::Run()
 				uint16_t offset = READ_SHORT();
 				if (IsFalsey(Peek(0)))
 				{
-					frames[frameCount - 1].ip += offset;
+					IP += offset;
 				}
 				break;
 			}
 			case OP_JUMP:
 			{
 				uint16_t offset = READ_SHORT();
-				frames[frameCount - 1].ip += offset;
+				IP += offset;
 				break;
 			}
 			case OP_LOOP:
 			{
 				uint16_t offset = READ_SHORT();
-				frames[frameCount - 1].ip -= offset;
+				IP -= offset;
 				break;
 			}
 			case OP_CALL:
@@ -604,10 +644,13 @@ InterpretResult VM::Run()
 				uint8_t argCount = READ_BYTE();
 				// The callee sits below its arguments on the stack.
 				VMValue callee = Peek(argCount);
-				if (!Call(callee, argCount))
+				// Update the instruction pointer before calling so the callee can return to the correct place.
+				frames[frameCount - 1].ip = IP;
+				if (!Call(callee, argCount, IP))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
+				IP = frames[frameCount - 1].ip;
 				break;
 			}
 			case OP_RETURN:
@@ -623,6 +666,8 @@ InterpretResult VM::Run()
 				stackTop = frame->slots;
 				*stackTop++ = returnValue;
 				--frameCount;
+				// Update the instruction pointer to the caller frame's IP so execution continues from there.
+				IP = frames[frameCount - 1].ip;
 				break;
 			}
 		}
@@ -642,19 +687,20 @@ InterpretResult VM::Interpret(VMValue function)
 	return Run();
 }
 
-bool VM::Call(VMValue function, int argCount)
+bool VM::Call(VMValue function, int argCount, const uint8_t* instructionIp)
 {
-	if (!function.value)
+	Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(function.value);
+
+	if (function.value->type != TYPE_CALLABLE || !functionValue || (functionValue->GetType() != Compiler::VM_FUNC_NATIVE && !function.chunk))
 	{
-		RuntimeError("Can't call a non-function value.");
+		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;
 	}
-
-	Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(function.value);
+	
 	int expectedArgCount = functionValue->Arity();
 	if (argCount != expectedArgCount)
 	{
-		RuntimeError("Expected %d arguments but got %d.", expectedArgCount, argCount);
+		RuntimeError(instructionIp, "Expected %d arguments but got %d.", expectedArgCount, argCount);
 		return false;
 	}
 
@@ -671,13 +717,13 @@ bool VM::Call(VMValue function, int argCount)
 	{
 		if (!function.chunk)
 		{
-			RuntimeError("Can only call functions with bytecode.");
+			RuntimeError(instructionIp, "Can only call functions with bytecode.");
 			return false;
 		}
 
 		if (frameCount >= FRAMES_MAX)
 		{
-			RuntimeError("Stack overflow: too many nested calls.");
+			RuntimeError(instructionIp, "Stack overflow: too many nested calls.");
 			return false;
 		}
 
