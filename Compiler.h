@@ -5,6 +5,11 @@
 
 class Compiler
 {
+	enum FunctionType
+	{
+		TYPE_SCRIPT,
+		TYPE_FUNCTION,
+	};
 protected:
 public:
 	// Root compiler
@@ -12,7 +17,7 @@ public:
 	~Compiler();
 
 	VMValue Compile(const char* source);
-	VMValue CompileFunction(const std::string& name);
+	VMValue CompileFunction(FunctionType fnType, const std::string& name);
 
 	enum VMFunctionType
 	{
@@ -44,6 +49,7 @@ public:
 	{
 		std::string name;
 		int32_t arity = 0;
+		int32_t upvalueCount = 0;
 		explicit VMFunctionValue(const std::string& inName) : name(inName) { this->type = TYPE_CALLABLE; }
 		int Arity() const override { return arity; }
 		operator std::string() const override { return "<fn " + name + ">"; }
@@ -118,12 +124,6 @@ private:
 		Precedence precedence;
 	};
 
-	enum FunctionType
-	{
-		TYPE_SCRIPT,
-		TYPE_FUNCTION,
-	};
-
 	// Shared parse state — owned by the root compiler, referenced by sub-compilers.
 	// Keeping it in one place means all compilers in a compilation unit advance
 	// through the same token stream automatically.
@@ -139,12 +139,12 @@ private:
 
 		std::vector<Token>                  tokens;
 		size_t                              nextToken = 0;
-		std::unordered_map<uint32_t, bool>  globalConstants;
+		std::unordered_map<uint32_t, bool>  globalFinals;
 	};
 
 	// Private constructor for function sub-compilers.
 	// Shares the caller's ParseContext; creates own chunk internally.
-	Compiler(Compiler* enclosing, ParseContext* sharedCtx, FunctionType fnType, const std::string& name);
+	Compiler(Compiler* enclosing, ParseContext* sharedCtx);
 
 	ParseContext  ownCtx;   // storage; only meaningful for the root compiler
 	ParseContext* ctx;
@@ -155,11 +155,11 @@ private:
 	Chunk* compilingChunk;
 
 	// Reference aliases into *ctx so every method in the .cpp can keep its
-	// existing "parser.xxx", "tokens[i]", "nextToken", "globalConstants" spelling.
+	// existing "parser.xxx", "tokens[i]", "nextToken", "globalFinals" spelling.
 	ParseContext::Parser&               parser;
 	std::vector<Token>&                 tokens;
 	size_t&                             nextToken;
-	std::unordered_map<uint32_t, bool>& globalConstants;
+	std::unordered_map<uint32_t, bool>& globalFinals;
 
 	VMValue      function;
 	FunctionType type;
@@ -169,10 +169,19 @@ private:
 	struct Local
 	{
 		Token name;
-		int   depth    = -1;
-		bool  constant = false;
+		int   depth   = -1;
+		bool  isFinal = false;
 	};
 	std::vector<Local> locals;
+
+	struct UpValue
+	{
+		int32_t index;
+		bool    isLocal;
+		bool    isFinal;
+	};
+	std::vector<UpValue> upvalues;
+
 	int scopeDepth = 0;
 
 	uint32_t currentLoopStart = -1;
@@ -185,7 +194,7 @@ private:
 	void Advance();
 	void Delclaration();
 	void Statement();
-	void VarDeclaration(bool constant);
+	void VarDeclaration(bool isFinal);
 	void FinalVarDeclaration();
 	void FunctionDeclaration();
 	void Function(FunctionType type, const std::string& name = "");
@@ -241,14 +250,16 @@ private:
 	Chunk* CurrentChunk();
 
 	// --- Variable Helpers ---
-	uint32_t ParseVariable(const std::string& errorMessage, bool constant);
+	uint32_t ParseVariable(const std::string& errorMessage, bool isFinal);
 	uint32_t MakeConstant(VMValue value);
 	uint32_t IdentifierConstant(const Token& name);
-	void DefineVariable(uint32_t global, bool constant);
-	void DeclareVariable(bool constant);
-	void AddLocal(const Token& name, bool constant);
+	void DefineVariable(uint32_t global, bool isFinal);
+	void DeclareVariable(bool isFinal);
+	void AddLocal(const Token& name, bool isFinal);
 	void MarkInitialize();
-	int ResolveLocal(const Token& name);
+	int32_t ResolveLocal(const Token& name);
+	int32_t ResolveUpvalue(const Token& name);
+	int32_t AddUpvalue(int32_t index, bool isLocal, bool isFinal);
 
 	// --- Jump Helpers ---
 	int32_t EmitJump(uint8_t instruction);

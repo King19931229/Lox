@@ -700,8 +700,35 @@ InterpretResult VM::Run()
 					RuntimeError(IP, "Can only create closures from function values.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				VMValue closure = VM::Create(new Compiler::VMClosureValue(functionValue, {}));
+				std::vector<VMValue> upvalues;
+				VMValue closure = VM::Create(new Compiler::VMClosureValue(functionValue, upvalues));
 				Push(closure);
+				break;
+			}
+			case OP_GET_UPVALUE:
+			{
+				uint8_t index = READ_BYTE();
+				CallFrame* frame = &frames[frameCount - 1];
+				if (index >= frame->GetUpvalues().size())
+				{
+					RuntimeError(IP, "Upvalue index out of range.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue upvalue = frame->GetUpvalues()[index];
+				Push(upvalue);
+				break;
+			}
+			case OP_SET_UPVALUE:
+			{
+				uint8_t index = READ_BYTE();
+				CallFrame* frame = &frames[frameCount - 1];
+				if (index >= frame->GetUpvalues().size())
+				{
+					RuntimeError(IP, "Upvalue index out of range.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue newValue = Pop();
+				frame->GetUpvalues()[index] = newValue;
 				break;
 			}
 		}

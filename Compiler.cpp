@@ -11,7 +11,7 @@ Compiler::Compiler()
 	, parser(ownCtx.parser)
 	, tokens(ownCtx.tokens)
 	, nextToken(ownCtx.nextToken)
-	, globalConstants(ownCtx.globalConstants)
+	, globalFinals(ownCtx.globalFinals)
 {
 	compilingChunk = new Chunk();
 	compilingChunk->Init();
@@ -19,19 +19,18 @@ Compiler::Compiler()
 	type = TYPE_SCRIPT;
 }
 
-Compiler::Compiler(Compiler* inEnclosing, ParseContext* sharedCtx, FunctionType fnType, const std::string& name)
+Compiler::Compiler(Compiler* inEnclosing, ParseContext* sharedCtx)
 	: ctx(sharedCtx)
 	, enclosing(inEnclosing)
 	, compilingChunk(nullptr)
 	, parser(sharedCtx->parser)
 	, tokens(sharedCtx->tokens)
 	, nextToken(sharedCtx->nextToken)
-	, globalConstants(sharedCtx->globalConstants)
+	, globalFinals(sharedCtx->globalFinals)
 {
 	compilingChunk = new Chunk();
 	compilingChunk->Init();
 	function = VMValue(nullptr, compilingChunk);
-	type = fnType;
 }
 
 Compiler::~Compiler()
@@ -207,9 +206,9 @@ void Compiler::Statement()
 	}
 }
 
-void Compiler::VarDeclaration(bool constant)
+void Compiler::VarDeclaration(bool isFinal)
 {
-	uint32_t global = ParseVariable("Expect variable name.", constant);
+	uint32_t global = ParseVariable("Expect variable name.", isFinal);
 	if (Match(EQUAL))
 	{
 		Expression();
@@ -220,7 +219,7 @@ void Compiler::VarDeclaration(bool constant)
 		EmitByte(OP_NIL);
 	}
 	Consume(SEMICOLON, "Expect ';' after variable declaration.");
-	DefineVariable(global, constant);
+	DefineVariable(global, isFinal);
 }
 
 void Compiler::FinalVarDeclaration()
@@ -237,11 +236,13 @@ void Compiler::FunctionDeclaration()
 	DefineVariable(global, false);
 }
 
-VMValue Compiler::CompileFunction(const std::string& name)
+VMValue Compiler::CompileFunction(FunctionType fnType, const std::string& name)
 {
-	Init(TYPE_FUNCTION, name);
+	Init(fnType, name);
 
 	BeginScope();
+
+	VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(function.value);
 
 	// Token consumption here uses *this* (the enclosing compiler) — since
 	// sub shares ctx, nextToken advances for both simultaneously.
@@ -249,7 +250,6 @@ VMValue Compiler::CompileFunction(const std::string& name)
 
 	while (!Check(RIGHT_PAREN) && !Check(END_OF_FILE))
 	{
-		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(function.value);
 		fnValue->arity++;
 		if (fnValue->arity > 255)
 		{
@@ -267,6 +267,8 @@ VMValue Compiler::CompileFunction(const std::string& name)
 	Consume(LEFT_BRACE, "Expect '{' before function body.");
 	Block();
 
+	fnValue->upvalueCount = (int32_t)upvalues.size();
+
 	VMValue fn = EndCompiler();
 	return !parser.hadError ? fn : VMValue();
 }
@@ -275,8 +277,8 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 {
 	// The sub-compiler creates its own chunk internally and shares this compiler's
 	// ParseContext so both advance through the same token stream.
-	Compiler sub(this, ctx, fnType, name);
-	VMValue fn = sub.CompileFunction(name);
+	Compiler sub(this, ctx);
+	VMValue fn = sub.CompileFunction(fnType, name);
 	EmitConstant(fn);
 	EmitByte(OP_CLOSURE);
 }
@@ -768,29 +770,39 @@ void Compiler::Or()
 
 void Compiler::NamedVariable(bool canAssign)
 {
-	OpCode getOp, setOp;
-	int localIndex = ResolveLocal(parser.previous);
-	bool constant = false;
+	OpCode getOp = OP_NIL, setOp = OP_NIL;
+	int index = ResolveLocal(parser.previous);
+	bool isFinal = false;
 	uint32_t arg = 0;
 
-	if (localIndex != -1)
+	if (index != -1)
 	{
-		arg = (uint32_t)localIndex;
-		constant = locals[localIndex].constant;
+		arg = (uint32_t)index;
+		isFinal = locals[index].isFinal;
 		getOp = arg <= 0xFF ? OP_GET_LOCAL : OP_GET_LOCAL_LONG;
 		setOp = arg <= 0xFF ? OP_SET_LOCAL : OP_SET_LOCAL_LONG;
 	}
 	else
 	{
-		arg = IdentifierConstant(parser.previous);
-		constant = globalConstants[arg];
-		getOp = arg <= 0xFF ? OP_GET_GLOBAL : OP_GET_GLOBAL_LONG;
-		setOp = arg <= 0xFF ? OP_SET_GLOBAL : OP_SET_GLOBAL_LONG;
+		index = ResolveUpvalue(parser.previous);
+		if (index != -1)
+		{
+			isFinal = upvalues[index].isFinal;
+			getOp = OP_GET_UPVALUE;
+			setOp = OP_SET_UPVALUE;
+		}
+		else
+		{
+			arg = IdentifierConstant(parser.previous);
+			isFinal = globalFinals[arg];
+			getOp = arg <= 0xFF ? OP_GET_GLOBAL : OP_GET_GLOBAL_LONG;
+			setOp = arg <= 0xFF ? OP_SET_GLOBAL : OP_SET_GLOBAL_LONG;
+		}
 	}
 
 	if (canAssign && Match(EQUAL))
 	{
-		if (constant)
+		if (isFinal)
 		{
 			Error("Cannot assign to a final variable.");
 		}
@@ -981,10 +993,10 @@ void Compiler::EmitConstant(VMValue value)
 
 // --- Variable Helpers ---
 
-uint32_t Compiler::ParseVariable(const std::string& errorMessage, bool constant)
+uint32_t Compiler::ParseVariable(const std::string& errorMessage, bool isFinal)
 {
 	Consume(IDENTIFIER, errorMessage.c_str());
-	DeclareVariable(constant);
+	DeclareVariable(isFinal);
 	if (scopeDepth > 0)
 	{
 		return UINT8_MAX;
@@ -1008,7 +1020,7 @@ uint32_t Compiler::IdentifierConstant(const Token& name)
 	return MakeConstant(VM::Create(StringValue::CreateRaw(name.lexeme)));
 }
 
-void Compiler::DefineVariable(uint32_t global, bool constant)
+void Compiler::DefineVariable(uint32_t global, bool isFinal)
 {
 	// Define a local variable. Mark it defined at this scope depth and emit no bytecode.
 	if (scopeDepth > 0)
@@ -1031,20 +1043,20 @@ void Compiler::DefineVariable(uint32_t global, bool constant)
 			(uint8_t)(global & 0xFF));
 	}
 
-	globalConstants[global] = constant;
+	globalFinals[global] = isFinal;
 }
 
-void Compiler::DeclareVariable(bool constant)
+void Compiler::DeclareVariable(bool isFinal)
 {
 	if (scopeDepth == 0)
 	{
 		return;
 	}
 	const Token& name = parser.previous;
-	AddLocal(name, constant);
+	AddLocal(name, isFinal);
 }
 
-void Compiler::AddLocal(const Token& name, bool constant)
+void Compiler::AddLocal(const Token& name, bool isFinal)
 {
 	if (locals.size() >= LOCAL_MAX)
 	{
@@ -1065,7 +1077,7 @@ void Compiler::AddLocal(const Token& name, bool constant)
 	}
 	locals.push_back(Local{});
 	locals.back().name = name;
-	locals.back().constant = constant;
+	locals.back().isFinal = isFinal;
 	locals.back().depth = -1;
 }
 
@@ -1081,7 +1093,7 @@ void Compiler::MarkInitialize()
 	}
 }
 
-int Compiler::ResolveLocal(const Token& name)
+int32_t Compiler::ResolveLocal(const Token& name)
 {
 	for (int32_t index = (int32_t)locals.size() - 1; index >= 0; --index)
 	{
@@ -1100,6 +1112,40 @@ int Compiler::ResolveLocal(const Token& name)
 		}
 	}
 	return -1;
+}
+
+int32_t Compiler::ResolveUpvalue(const Token& name)
+{
+	if (enclosing == nullptr)
+	{
+		return -1;
+	}
+	int32_t localIndex = enclosing->ResolveLocal(name);
+	if (localIndex != -1)
+	{
+		return AddUpvalue(localIndex, true, enclosing->locals[localIndex].isFinal);
+	}
+	return -1;
+}
+
+int32_t Compiler::AddUpvalue(int32_t index, bool isLocal, bool isFinal)
+{
+	for (size_t i = 0; i < upvalues.size(); ++i)
+	{
+		if (upvalues[i].index == index && upvalues[i].isLocal == isLocal)
+		{
+			return (int32_t)i;
+		}
+	}
+
+	if (upvalues.size() == UINT8_MAX)
+	{
+		Error("Too many closure variables in function.");
+		return 0;
+	}
+
+	upvalues.push_back(UpValue{ index, isLocal, isFinal });
+	return (int32_t)upvalues.size() - 1;
 }
 
 int32_t Compiler::EmitJump(uint8_t instruction)

@@ -250,6 +250,10 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 			return ByteInstruction("OP_CALL", offset);
 		case OP_CLOSURE:
 			return SimpleInstruction("OP_CLOSURE", offset);
+		case OP_GET_UPVALUE:
+			return ByteInstruction("OP_GET_UPVALUE", offset);
+		case OP_SET_UPVALUE:
+			return ByteInstruction("OP_SET_UPVALUE", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;

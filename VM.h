@@ -20,9 +20,13 @@ struct CallFrame
 	uint8_t* ip;
 	VMValue* slots;
 
-	inline Chunk* GetChunk() const
+	inline Chunk* GetChunk()
 	{
 		return static_cast<Compiler::VMClosureValue*>(closure.value)->function.chunk;
+	}
+	inline std::vector<VMValue>& GetUpvalues()
+	{
+		return static_cast<Compiler::VMClosureValue*>(closure.value)->upvalues;
 	}
 };
 
