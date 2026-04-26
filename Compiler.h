@@ -7,9 +7,12 @@ class Compiler
 {
 protected:
 public:
-	Compiler(Chunk* chunk = nullptr);  // Root compiler: takes external chunk
+	// Root compiler
+	Compiler();
 	~Compiler();
+
 	VMValue Compile(const char* source);
+	VMValue CompileFunction(const std::string& name);
 
 	enum VMFunctionType
 	{
@@ -141,12 +144,15 @@ private:
 
 	// Private constructor for function sub-compilers.
 	// Shares the caller's ParseContext; creates own chunk internally.
-	Compiler(ParseContext* sharedCtx, FunctionType fnType, const std::string& name);
+	Compiler(Compiler* enclosing, ParseContext* sharedCtx, FunctionType fnType, const std::string& name);
 
 	ParseContext  ownCtx;   // storage; only meaningful for the root compiler
 	ParseContext* ctx;
 
-	Chunk* ownedChunk = nullptr;  // non-null only for sub-compilers (chunk lifetime managed by VM GC)
+	// The enclosing compiler, if any. Used to access the enclosing function's chunk for upvalue management.
+	Compiler* enclosing;
+	// The chunk being compiled. For the root compiler, this is the chunk of the top-level script function.
+	Chunk* compilingChunk;
 
 	// Reference aliases into *ctx so every method in the .cpp can keep its
 	// existing "parser.xxx", "tokens[i]", "nextToken", "globalConstants" spelling.

@@ -799,15 +799,11 @@ void VM::DefineNative(const std::string& name, Compiler::NativeFn function, int3
 
 InterpretResult VM::Interpret(const char* source)
 {
-	Chunk localChunk;
-	localChunk.Init();
-
-	Compiler compiler(&localChunk);
+	Compiler compiler;
 
 	VMValue compiledFunction = compiler.Compile(source);
 	if (compiledFunction.value == nullptr)
 	{
-		localChunk.Free();
 		return INTERPRET_COMPILE_ERROR;
 	}
 
@@ -819,13 +815,11 @@ InterpretResult VM::Interpret(const char* source)
 	frameCount = 0;
 	if (!Call(scriptClosure, 0))
 	{
-		localChunk.Free();
 		return INTERPRET_RUNTIME_ERROR;
 	}
 
 	InterpretResult result = Run();
 
-	localChunk.Free();
 	return result;
 }
 

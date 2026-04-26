@@ -4,32 +4,43 @@
 
 #define DEBUG_PRINT_CODE
 
-Compiler::Compiler(Chunk* chunk)
+Compiler::Compiler()
 	: ctx(&ownCtx)
+	, enclosing(nullptr)
+	, compilingChunk(nullptr)
 	, parser(ownCtx.parser)
 	, tokens(ownCtx.tokens)
 	, nextToken(ownCtx.nextToken)
 	, globalConstants(ownCtx.globalConstants)
 {
-	function = VMValue(nullptr, chunk);
+	compilingChunk = new Chunk();
+	compilingChunk->Init();
+	function = VMValue(nullptr, compilingChunk);
 	type = TYPE_SCRIPT;
 }
 
-Compiler::Compiler(ParseContext* sharedCtx, FunctionType fnType, const std::string& name)
+Compiler::Compiler(Compiler* inEnclosing, ParseContext* sharedCtx, FunctionType fnType, const std::string& name)
 	: ctx(sharedCtx)
+	, enclosing(inEnclosing)
+	, compilingChunk(nullptr)
 	, parser(sharedCtx->parser)
 	, tokens(sharedCtx->tokens)
 	, nextToken(sharedCtx->nextToken)
 	, globalConstants(sharedCtx->globalConstants)
 {
-	ownedChunk = new Chunk();
-	ownedChunk->Init();
-	function = VMValue(nullptr, ownedChunk);
+	compilingChunk = new Chunk();
+	compilingChunk->Init();
+	function = VMValue(nullptr, compilingChunk);
 	type = fnType;
 }
 
 Compiler::~Compiler()
 {
+	if (compilingChunk)
+	{
+		compilingChunk->Free();
+		delete compilingChunk;
+	}
 }
 
 Chunk* Compiler::CurrentChunk()
@@ -76,8 +87,8 @@ VMValue Compiler::Compile(const char* source)
 		Delclaration();
 	}
 
-	VMValue function = EndCompiler();
-	return !parser.hadError ? function : VMValue();
+	VMValue fn = EndCompiler();
+	return !parser.hadError ? fn : VMValue();
 }
 
 // --- Core Parsing Flow ---
@@ -226,13 +237,11 @@ void Compiler::FunctionDeclaration()
 	DefineVariable(global, false);
 }
 
-void Compiler::Function(FunctionType fnType, const std::string& name)
+VMValue Compiler::CompileFunction(const std::string& name)
 {
-	// The sub-compiler creates its own chunk internally and shares this compiler's
-	// ParseContext so both advance through the same token stream.
-	Compiler sub(ctx, fnType, name);
-	sub.Init(fnType, name);
-	sub.BeginScope();
+	Init(TYPE_FUNCTION, name);
+
+	BeginScope();
 
 	// Token consumption here uses *this* (the enclosing compiler) — since
 	// sub shares ctx, nextToken advances for both simultaneously.
@@ -240,14 +249,14 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 
 	while (!Check(RIGHT_PAREN) && !Check(END_OF_FILE))
 	{
-		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(sub.function.value);
+		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(function.value);
 		fnValue->arity++;
 		if (fnValue->arity > 255)
 		{
-			sub.ErrorAtCurrent("Can't have more than 255 parameters.");
+			ErrorAtCurrent("Can't have more than 255 parameters.");
 		}
-		int32_t parameter = sub.ParseVariable("Expect parameter name.", false);
-		sub.DefineVariable(parameter, false);
+		int32_t parameter = ParseVariable("Expect parameter name.", false);
+		DefineVariable(parameter, false);
 		if (!Match(COMMA))
 		{
 			break;
@@ -256,11 +265,18 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 
 	Consume(RIGHT_PAREN, "Expect ')' after parameters. (Currently no parameters are supported)");
 	Consume(LEFT_BRACE, "Expect '{' before function body.");
-	sub.Block();
+	Block();
 
-	VMValue fn = sub.EndCompiler();
-	// Let the VM take ownership of the compiled function's chunk and value, which are heap-allocated.
-	fn = VM::Create(fn.value, fn.chunk);
+	VMValue fn = EndCompiler();
+	return !parser.hadError ? fn : VMValue();
+}
+
+void Compiler::Function(FunctionType fnType, const std::string& name)
+{
+	// The sub-compiler creates its own chunk internally and shares this compiler's
+	// ParseContext so both advance through the same token stream.
+	Compiler sub(this, ctx, fnType, name);
+	VMValue fn = sub.CompileFunction(name);
 	EmitConstant(fn);
 	EmitByte(OP_CLOSURE);
 }
@@ -588,6 +604,12 @@ VMValue Compiler::EndCompiler()
 		CurrentChunk()->Disassemble(disassemblyName.c_str());
 	}
 #endif // DEBUG_PRINT_CODE
+
+	// Let the VM take ownership of the compiled function's chunk and value, which are heap-allocated.
+	function = VM::Create(function.value, function.chunk);
+	// The compiler is done with the chunk and function value, but the VM now owns them, so don't free them in the destructor.
+	compilingChunk = nullptr;
+
 	return function;
 }
 

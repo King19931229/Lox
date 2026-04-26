@@ -265,7 +265,7 @@ void TestChunk()
 
 int main(int argc, char* argv[])
 {
-#if 0
+	#if 0
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
