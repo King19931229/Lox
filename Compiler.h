@@ -81,7 +81,8 @@ public:
 		VMValue function;
 		std::vector<VMValue> upvalues;
 		explicit VMClosureValue(VMValue inFunction, std::vector<VMValue> inUpvalues)
-			: function(inFunction), upvalues(std::move(inUpvalues))
+			: function(inFunction)
+			, upvalues(std::move(inUpvalues))
 		{
 			this->type = TYPE_CALLABLE;
 		}

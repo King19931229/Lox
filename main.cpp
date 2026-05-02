@@ -269,16 +269,15 @@ int main(int argc, char* argv[])
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
-	fun makeClosure(value) {
-	fun closure() {
-	print value;
+	fun outer() {
+		var x = "before";
+		fun inner() {
+			x = "assigned";
+		}
+		inner();
+		print x;
 	}
-	return closure;
-	}
-	var doughnut = makeClosure("doughnut");
-	var bagel = makeClosure("bagel");
-	doughnut();
-	bagel(); 
+	outer();
 	)");
 	vm.Free();
 	#endif

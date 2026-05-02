@@ -41,6 +41,16 @@ protected:
 	static constexpr uint32_t FRAMES_MAX = 64;
 	static constexpr uint32_t STACK_MAX = FRAMES_MAX * 255;
 
+	struct UpvalueValue : public Value
+	{
+		VMValue* vmvalue = nullptr;
+		UpvalueValue(VMValue* inVmvalue)
+			: vmvalue(inVmvalue)
+		{
+			type = TYPE_UPVALUE;
+		}
+	};
+
     VMValue* stacks = nullptr;
     size_t stackCapacity = 255;
     VMValue* stackTop = nullptr;
@@ -50,6 +60,8 @@ protected:
 
 	CallFrame frames[FRAMES_MAX];
 	uint32_t frameCount = 0;
+
+	std::vector<UpvalueValue*> openUpvalues;
 
 	// Stack operations
 	void ResetStack();

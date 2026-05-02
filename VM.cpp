@@ -45,6 +45,15 @@ void VM::AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks)
 			frames[i].slots = newStacks + (frames[i].slots - oldStacks);
 		}
 	}
+
+	// Rebase all open upvalue pointers that point into the stack.
+	for (UpvalueValue* uv : openUpvalues)
+	{
+		if (uv->vmvalue >= oldStacks && uv->vmvalue < oldStacks + stackCapacity)
+		{
+			uv->vmvalue = newStacks + (uv->vmvalue - oldStacks);
+		}
+	}
 }
 
 void VM::Push(VMValue value)
@@ -701,6 +710,36 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				std::vector<VMValue> upvalues;
+				uint8_t upvalueCount = READ_BYTE();
+				for (int32_t i = 0; i < upvalueCount; ++i)
+				{
+					uint8_t isLocal = READ_BYTE();
+					uint32_t index = (uint32_t)READ_BYTE();
+					if (isLocal)
+					{
+						if (frames[frameCount - 1].slots == nullptr || index >= (uint32_t)(stackTop - frames[frameCount - 1].slots))
+						{
+							RuntimeError(IP, "Local slot index out of range for closure.");
+							return INTERPRET_RUNTIME_ERROR;
+						}
+						// Capture the local variable by creating an upvalue that points to the variable's slot on the stack.
+						// This is a open upvalue that will be closed when the variable goes out of scope.
+						// reference to &frames[frameCount - 1].slots[index] will be updated
+						UpvalueValue* capturedValue = new UpvalueValue(&frames[frameCount - 1].slots[index]);
+						openUpvalues.push_back(capturedValue);
+						VMValue upvalueValue = VM::Create(capturedValue);
+						upvalues.push_back(upvalueValue);
+					}
+					else
+					{
+						if (index >= frames[frameCount - 1].GetUpvalues().size())
+						{
+							RuntimeError(IP, "Upvalue index out of range for closure.");
+							return INTERPRET_RUNTIME_ERROR;
+						}
+						upvalues.push_back(frames[frameCount - 1].GetUpvalues()[index]);
+					}
+				}
 				VMValue closure = VM::Create(new Compiler::VMClosureValue(functionValue, upvalues));
 				Push(closure);
 				break;
@@ -714,8 +753,9 @@ InterpretResult VM::Run()
 					RuntimeError(IP, "Upvalue index out of range.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				VMValue upvalue = frame->GetUpvalues()[index];
-				Push(upvalue);
+				VMValue value = frame->GetUpvalues()[index];
+				UpvalueValue* upvalue = static_cast<UpvalueValue*>(value.value);
+				Push(*upvalue->vmvalue);
 				break;
 			}
 			case OP_SET_UPVALUE:
@@ -727,8 +767,9 @@ InterpretResult VM::Run()
 					RuntimeError(IP, "Upvalue index out of range.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				VMValue newValue = Pop();
-				frame->GetUpvalues()[index] = newValue;
+				VMValue vmvalue = Pop();
+				UpvalueValue* upvalue = static_cast<UpvalueValue*>(frame->GetUpvalues()[index].value);
+				*(upvalue->vmvalue) = vmvalue;
 				break;
 			}
 		}

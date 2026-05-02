@@ -281,6 +281,20 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 	VMValue fn = sub.CompileFunction(fnType, name);
 	EmitConstant(fn);
 	EmitByte(OP_CLOSURE);
+	if (fnType == TYPE_FUNCTION)
+	{
+		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(fn.value);
+		EmitByte(fnValue->upvalueCount);
+		for (int32_t i = 0; i < fnValue->upvalueCount; i++)
+		{
+			EmitByte(sub.upvalues[i].isLocal ? 1 : 0);
+			EmitByte(sub.upvalues[i].index);
+		}
+	}
+	else
+	{
+		EmitByte(0);
+	}
 }
 
 void Compiler::IfStatement()
@@ -787,6 +801,11 @@ void Compiler::NamedVariable(bool canAssign)
 		index = ResolveUpvalue(parser.previous);
 		if (index != -1)
 		{
+			arg = (uint32_t)index;
+			if (arg > 0xFF)
+			{
+				Error("Too many closure variables in function.");
+			}
 			isFinal = upvalues[index].isFinal;
 			getOp = OP_GET_UPVALUE;
 			setOp = OP_SET_UPVALUE;
@@ -1124,6 +1143,11 @@ int32_t Compiler::ResolveUpvalue(const Token& name)
 	if (localIndex != -1)
 	{
 		return AddUpvalue(localIndex, true, enclosing->locals[localIndex].isFinal);
+	}
+	int32_t upvalueIndex = enclosing->ResolveUpvalue(name);
+	if (upvalueIndex != -1)
+	{
+		return AddUpvalue(upvalueIndex, false, enclosing->upvalues[upvalueIndex].isFinal);
 	}
 	return -1;
 }

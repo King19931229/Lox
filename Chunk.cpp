@@ -167,6 +167,20 @@ int32_t Chunk::ConstantLongInstruction(const char* name, int32_t offset)
 	return offset + 4;
 }
 
+int32_t Chunk::ClosureInstruction(const char* name, int32_t offset)
+{
+	uint8_t upvalueCount = code[offset + 1];
+	printf("%-16s %4d\n", name, upvalueCount);
+	offset += 2;
+	for (int32_t i = 0; i < upvalueCount; ++i)
+	{
+		uint8_t isLocal = code[offset++];
+		uint8_t index = code[offset++];
+		printf("%04d      |  %s %d\n", offset - 2, isLocal ? "local" : "upvalue", index);
+	}
+	return offset;
+}
+
 int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 {
 	PrintIndent(indent);
@@ -249,7 +263,7 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 		case OP_CALL:
 			return ByteInstruction("OP_CALL", offset);
 		case OP_CLOSURE:
-			return SimpleInstruction("OP_CLOSURE", offset);
+			return ClosureInstruction("OP_CLOSURE", offset);
 		case OP_GET_UPVALUE:
 			return ByteInstruction("OP_GET_UPVALUE", offset);
 		case OP_SET_UPVALUE:

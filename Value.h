@@ -15,6 +15,8 @@ enum ValueType
 	TYPE_CALLABLE,
 	TYPE_CLASS,
 	TYPE_INSTANCE,
+	// For upvalues captured by closures. Only useable in VM.
+	TYPE_UPVALUE,
 	TYPE_ERROR // Error type
 };
 
@@ -26,6 +28,14 @@ struct Value : public std::enable_shared_from_this<Value>
 {
 	ValueType type;
 	virtual ~Value() = default;
+
+	Value() : type(TYPE_ERROR) {}
+
+	// Disable copy and move semantics to prevent accidental copying of Values
+	Value& operator=(const Value& other) = delete;
+	Value& operator=(Value&& other) = delete;
+	Value(const Value& other) = delete;
+	Value(Value&& other) = delete;
 
 	// Invalid conversions report runtime errors and return default values.
 	virtual operator int() const { Lox::GetInstance().RuntimeError("Invalid conversion to int."); return 0; }
@@ -112,6 +122,11 @@ struct StringValue : public Value
 	static ValuePtr Create(const std::string& inValue)
 	{
 		return ValuePtr(CreateRaw(inValue));
+	}
+
+	StringValue& operator=(Value value)
+	{		
+		return *this;
 	}
 
 	operator bool() const override { return !value.empty(); }
