@@ -154,8 +154,16 @@ void Compiler::EndScope()
 	scopeDepth--;
 	while (!locals.empty() && locals.back().depth > scopeDepth)
 	{
+		Local& local = locals.back();
 		// Drop locals that go out of scope so their stack slots are reclaimed.
-		EmitByte(OP_POP);
+		if (local.isCaptured)
+		{
+			EmitByte(OP_CLOSE_UPVALUE);
+		}
+		else
+		{
+			EmitByte(OP_POP);
+		}
 		locals.pop_back();
 	}
 }
@@ -267,6 +275,8 @@ VMValue Compiler::CompileFunction(FunctionType fnType, const std::string& name)
 	Consume(LEFT_BRACE, "Expect '{' before function body.");
 	Block();
 
+	EndScope();
+
 	fnValue->upvalueCount = (int32_t)upvalues.size();
 
 	VMValue fn = EndCompiler();
@@ -279,6 +289,13 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 	// ParseContext so both advance through the same token stream.
 	Compiler sub(this, ctx);
 	VMValue fn = sub.CompileFunction(fnType, name);
+
+	if (fn.value == nullptr)
+	{
+		// Sub-compiler encountered an error, bail out to avoid dereferencing null.
+		return;
+	}
+
 	EmitConstant(fn);
 	EmitByte(OP_CLOSURE);
 	if (fnType == TYPE_FUNCTION)
@@ -614,19 +631,22 @@ VMValue Compiler::EndCompiler()
 		EmitByte(OP_RETURN);
 	}
 #ifdef DEBUG_PRINT_CODE	
-	if (!parser.hadError)
+	// Only print the outermost (script) chunk; nested functions are printed
+	// recursively via DisassembleConstant when the parent chunk is disassembled.
+	if (!parser.hadError && enclosing == nullptr)
 	{
 		std::string disassemblyName = static_cast<std::string>(*function.value);
 		CurrentChunk()->Disassemble(disassemblyName.c_str());
 	}
 #endif // DEBUG_PRINT_CODE
 
-	// Let the VM take ownership of the compiled function's chunk and value, which are heap-allocated.
-	function = VM::Create(function.value, function.chunk);
-	// The compiler is done with the chunk and function value, but the VM now owns them, so don't free them in the destructor.
+	// Transfer ownership of the compiled function's value and chunk to a new GC node.
+	VMValue result = *VM::Create(function.value, function.chunk);
+	// Clear local references so the destructor doesn't double-free.
+	function.value = nullptr;
 	compilingChunk = nullptr;
 
-	return function;
+	return result;
 }
 
 // --- Grammar Rules ---
@@ -634,16 +654,14 @@ VMValue Compiler::EndCompiler()
 void Compiler::Number(bool /*canAssign*/)
 {
 	const std::string& lexeme = parser.previous.lexeme;
-	VMValue value;
 	if (lexeme.find('.') != std::string::npos)
 	{
-		value = VM::Create(FloatValue::CreateRaw(std::stof(lexeme)));
+		EmitConstant(*VM::Create(FloatValue::CreateRaw(std::stof(lexeme))));
 	}
 	else
 	{
-		value = VM::Create(IntValue::CreateRaw(std::stoi(lexeme)));
+		EmitConstant(*VM::Create(IntValue::CreateRaw(std::stoi(lexeme))));
 	}
-	EmitConstant(value);
 }
 
 void Compiler::Literal(bool /*canAssign*/)
@@ -662,7 +680,7 @@ void Compiler::Literal(bool /*canAssign*/)
 void Compiler::String(bool /*canAssign*/)
 {
 	const std::string& lexeme = parser.previous.lexeme;
-	EmitConstant(VM::Create(StringValue::CreateRaw(lexeme)));
+	EmitConstant(*VM::Create(StringValue::CreateRaw(lexeme)));
 }
 
 void Compiler::Grouping(bool /*canAssign*/)
@@ -1036,7 +1054,7 @@ uint32_t Compiler::MakeConstant(VMValue value)
 
 uint32_t Compiler::IdentifierConstant(const Token& name)
 {
-	return MakeConstant(VM::Create(StringValue::CreateRaw(name.lexeme)));
+	return MakeConstant(*VM::Create(StringValue::CreateRaw(name.lexeme)));
 }
 
 void Compiler::DefineVariable(uint32_t global, bool isFinal)
@@ -1142,6 +1160,7 @@ int32_t Compiler::ResolveUpvalue(const Token& name)
 	int32_t localIndex = enclosing->ResolveLocal(name);
 	if (localIndex != -1)
 	{
+		enclosing->locals[localIndex].isCaptured = true;
 		return AddUpvalue(localIndex, true, enclosing->locals[localIndex].isFinal);
 	}
 	int32_t upvalueIndex = enclosing->ResolveUpvalue(name);

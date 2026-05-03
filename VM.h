@@ -43,9 +43,10 @@ protected:
 
 	struct UpvalueValue : public Value
 	{
-		VMValue* vmvalue = nullptr;
-		UpvalueValue(VMValue* inVmvalue)
-			: vmvalue(inVmvalue)
+		VMValue* location = nullptr;
+		VMValue closed;
+		UpvalueValue(VMValue* inLocation)
+			: location(inLocation)
 		{
 			type = TYPE_UPVALUE;
 		}
@@ -61,7 +62,7 @@ protected:
 	CallFrame frames[FRAMES_MAX];
 	uint32_t frameCount = 0;
 
-	std::vector<UpvalueValue*> openUpvalues;
+	std::vector<VMValue> openUpvalues;
 
 	// Stack operations
 	void ResetStack();
@@ -70,6 +71,7 @@ protected:
 	InterpretResult Negate(const uint8_t* instructionIp = nullptr);
 	VMValue Pop();
 	VMValue Peek(int32_t distance);
+	VMValue CaptureUpvalue(VMValue* local);
 	void Free(VMValue* object);
 
 	// Resolve a global variable slot by name, creating a new slot if it doesn't exist. Returns true on success.
@@ -98,12 +100,12 @@ public:
 	// VM lifecycle
 	void Init();
 	void Free();
-	static VMValue Create(Value* value, Chunk* chunk = nullptr);
+	static VMValue* Create(Value* value, Chunk* chunk = nullptr);
 
 	// Execution
 	InterpretResult Run();
 	// Call a function value with given argument count. Returns true on success.
-	bool Call(VMValue function, int argCount, const uint8_t* instructionIp = nullptr);
+	bool Call(VMValue callee, int argCount, const uint8_t* instructionIp = nullptr);
 	InterpretResult Interpret(VMValue function);
 	InterpretResult Interpret(const char* source);
 

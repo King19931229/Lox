@@ -20,7 +20,7 @@ VMValue clock(int argCount, VMValue* args)
 {
 	static const auto startTime = std::chrono::steady_clock::now();
 	auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - startTime);
-	return VM::Create(FloatValue::CreateRaw(elapsed.count()));
+	return *VM::Create(FloatValue::CreateRaw(elapsed.count()));
 }
 
 VM* VM::instance = nullptr;
@@ -46,12 +46,13 @@ void VM::AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks)
 		}
 	}
 
-	// Rebase all open upvalue pointers that point into the stack.
-	for (UpvalueValue* uv : openUpvalues)
+	// Rebase open upvalue location pointers that point into the stack.
+	for (VMValue& upvalue : openUpvalues)
 	{
-		if (uv->vmvalue >= oldStacks && uv->vmvalue < oldStacks + stackCapacity)
+		UpvalueValue* uv = static_cast<UpvalueValue*>(upvalue.value);
+		if (uv->location >= oldStacks && uv->location < oldStacks + stackCapacity)
 		{
-			uv->vmvalue = newStacks + (uv->vmvalue - oldStacks);
+			uv->location = newStacks + (uv->location - oldStacks);
 		}
 	}
 }
@@ -269,7 +270,8 @@ InterpretResult VM::Negate(const uint8_t* instructionIp)
 		return INTERPRET_RUNTIME_ERROR;
 	}
 
-	(stackTop - 1)->value = ValNegate((stackTop - 1)->value);
+	VMValue top = *(stackTop - 1);
+	*(stackTop - 1) = *VM::Create(ValNegate(top.value));
 	return INTERPRET_OK;
 }
 
@@ -322,14 +324,30 @@ void VM::Free()
 	}
 }
 
-VMValue VM::Create(Value* value, Chunk* chunk)
+VMValue* VM::Create(Value* value, Chunk* chunk)
 {
-	if (!value) return VMValue(nullptr, nullptr);
+	if (!value) return nullptr;
 	VM& vm = GetInstance();
 	VMValue* node = new VMValue(value, chunk);
 	node->next = vm.objects;
 	vm.objects = node;
-	return VMValue(value, chunk);
+	return node;
+}
+
+VMValue VM::CaptureUpvalue(VMValue* local)
+{
+	for (VMValue upvalue : openUpvalues)
+	{
+		if (static_cast<UpvalueValue*>(upvalue.value)->location == local)
+		{
+			return upvalue;
+		}
+	}
+	UpvalueValue* uv = new UpvalueValue(local);
+	uv->location = local;
+	VMValue* newUpvalue = VM::Create(uv);
+	openUpvalues.push_back(*newUpvalue);
+	return *newUpvalue;
 }
 
 InterpretResult VM::Run()
@@ -388,42 +406,42 @@ InterpretResult VM::Run()
 			{
 				Value* out = ValAdd(a.value, b.value);
 				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(VM::Create(out));
+				Push(*VM::Create(out));
 				break;
 			}
 			case OP_SUBTRACT:
 			{
 				Value* out = ValSub(a.value, b.value);
 				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(VM::Create(out));
+				Push(*VM::Create(out));
 				break;
 			}
 			case OP_MULTIPLY:
 			{
 				Value* out = ValMul(a.value, b.value);
 				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(VM::Create(out));
+				Push(*VM::Create(out));
 				break;
 			}
 			case OP_DIVIDE:
 			{
 				Value* out = ValDiv(a.value, b.value);
 				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(VM::Create(out));
+				Push(*VM::Create(out));
 				break;
 			}
 			case OP_GREATER:
 			{
 				Value* out = ValGreater(a.value, b.value);
 				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(VM::Create(out));
+				Push(*VM::Create(out));
 				break;
 			}
 			case OP_LESS:
 			{
 				Value* out = ValLess(a.value, b.value);
 				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(VM::Create(out));
+				Push(*VM::Create(out));
 				break;
 			}
 			default:
@@ -440,12 +458,12 @@ InterpretResult VM::Run()
 		VMValue a = Pop();
 		if (IsString(a) && IsString(b))
 		{
-			Push(VM::Create(ValAdd(a.value, b.value)));
+			Push(*VM::Create(ValAdd(a.value, b.value)));
 			return INTERPRET_OK;
 		}
 		else if (IsNumber(a) && IsNumber(b))
 		{
-			Push(VM::Create(ValAdd(a.value, b.value)));
+			Push(*VM::Create(ValAdd(a.value, b.value)));
 			return INTERPRET_OK;
 		}
 		else
@@ -457,7 +475,7 @@ InterpretResult VM::Run()
 
 	auto NOT_OP = [&]() {
 		VMValue value = Pop();
-		Push(VM::Create(BoolValue::CreateRaw(IsFalsey(value))));
+		Push(*VM::Create(BoolValue::CreateRaw(IsFalsey(value))));
 		return INTERPRET_OK;
 	};
 
@@ -488,17 +506,17 @@ InterpretResult VM::Run()
 			}
 			case OP_NIL:
 			{
-				Push(VM::Create(NilValue::CreateRaw()));
+				Push(*VM::Create(NilValue::CreateRaw()));
 				break;
 			}
 			case OP_TRUE:
 			{
-				Push(VM::Create(BoolValue::CreateRaw(true)));
+				Push(*VM::Create(BoolValue::CreateRaw(true)));
 				break;
 			}
 			case OP_FALSE:
 			{
-				Push(VM::Create(BoolValue::CreateRaw(false)));
+				Push(*VM::Create(BoolValue::CreateRaw(false)));
 				break;
 			}
 			case OP_NEGATE:
@@ -545,7 +563,7 @@ InterpretResult VM::Run()
 			{
 				VMValue b = Pop();
 				VMValue a = Pop();
-				Push(VM::Create(BoolValue::CreateRaw(IsEqual(a.value, b.value))));
+				Push(*VM::Create(BoolValue::CreateRaw(IsEqual(a.value, b.value))));
 				break;
 			}
 			case OP_PRINT:
@@ -724,11 +742,8 @@ InterpretResult VM::Run()
 						}
 						// Capture the local variable by creating an upvalue that points to the variable's slot on the stack.
 						// This is a open upvalue that will be closed when the variable goes out of scope.
-						// reference to &frames[frameCount - 1].slots[index] will be updated
-						UpvalueValue* capturedValue = new UpvalueValue(&frames[frameCount - 1].slots[index]);
-						openUpvalues.push_back(capturedValue);
-						VMValue upvalueValue = VM::Create(capturedValue);
-						upvalues.push_back(upvalueValue);
+						VMValue capturedValue = CaptureUpvalue(&frames[frameCount - 1].slots[index]);
+						upvalues.push_back(capturedValue);
 					}
 					else
 					{
@@ -740,7 +755,7 @@ InterpretResult VM::Run()
 						upvalues.push_back(frames[frameCount - 1].GetUpvalues()[index]);
 					}
 				}
-				VMValue closure = VM::Create(new Compiler::VMClosureValue(functionValue, upvalues));
+				VMValue closure = *VM::Create(new Compiler::VMClosureValue(functionValue, upvalues));
 				Push(closure);
 				break;
 			}
@@ -755,7 +770,7 @@ InterpretResult VM::Run()
 				}
 				VMValue value = frame->GetUpvalues()[index];
 				UpvalueValue* upvalue = static_cast<UpvalueValue*>(value.value);
-				Push(*upvalue->vmvalue);
+				Push(*upvalue->location);
 				break;
 			}
 			case OP_SET_UPVALUE:
@@ -767,9 +782,31 @@ InterpretResult VM::Run()
 					RuntimeError(IP, "Upvalue index out of range.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				VMValue vmvalue = Pop();
+				VMValue newValue = Peek(0);
 				UpvalueValue* upvalue = static_cast<UpvalueValue*>(frame->GetUpvalues()[index].value);
-				*(upvalue->vmvalue) = vmvalue;
+				*upvalue->location = newValue;
+				break;
+			}
+			case OP_CLOSE_UPVALUE:
+			{
+				CallFrame* frame = &frames[frameCount - 1];
+				uint8_t localIndex = (uint8_t)(stackTop - 1 - frame->slots);
+				// Close any open upvalues that point to the local variable being popped.
+				for (auto it = openUpvalues.begin(); it != openUpvalues.end();)
+				{
+					UpvalueValue* upvalue = static_cast<UpvalueValue*>((*it).value);
+					if (upvalue->location == frame->slots + localIndex)
+					{
+						upvalue->closed = *upvalue->location;
+						upvalue->location = &upvalue->closed;
+						it = openUpvalues.erase(it);
+					}
+					else
+					{
+						++it;
+					}
+				}
+				Pop();
 				break;
 			}
 		}
@@ -781,7 +818,7 @@ InterpretResult VM::Run()
 InterpretResult VM::Interpret(VMValue function)
 {
 	frameCount = 0;
-	VMValue closure = VM::Create(new Compiler::VMClosureValue(function, {}));
+	VMValue closure = *VM::Create(new Compiler::VMClosureValue(function, {}));
 	Push(closure);
 	if (!Call(closure, 0))
 	{
@@ -790,21 +827,26 @@ InterpretResult VM::Interpret(VMValue function)
 	return Run();
 }
 
-bool VM::Call(VMValue closure, int argCount, const uint8_t* instructionIp)
+bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 {
-	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(closure.value);
-
-	if (closure.value->type != TYPE_CALLABLE)
+	if (!callee.value || callee.value->type != TYPE_CALLABLE)
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;
 	}
 
+	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(callee.value);
 	VMValue function = closureValue->function;
-	
+
+	if (!function.value || function.value->type != TYPE_CALLABLE)
+	{
+		RuntimeError(instructionIp, "Can't call a non-function value.");
+		return false;
+	}
+
 	Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(function.value);
 
-	if (function.value->type != TYPE_CALLABLE || !functionValue || (functionValue->GetType() != Compiler::VM_FUNC_NATIVE && !function.chunk))
+	if (!functionValue || (functionValue->GetType() != Compiler::VM_FUNC_NATIVE && !function.chunk))
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;
@@ -841,7 +883,7 @@ bool VM::Call(VMValue closure, int argCount, const uint8_t* instructionIp)
 		}
 
 		CallFrame newFrame;
-		newFrame.closure = closure;
+		newFrame.closure = callee;
 		newFrame.ip = newFrame.GetChunk()->code;
 		// Frame slots start at the callee slot, so locals can index from that base.
 		newFrame.slots = stackTop - argCount - 1;
@@ -854,10 +896,10 @@ bool VM::Call(VMValue closure, int argCount, const uint8_t* instructionIp)
 void VM::DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity)
 {
 	size_t slot = -1;
-	if (ResolveOrCreateGlobalSlot(VM::Create(StringValue::CreateRaw(name)), slot))
+	if (ResolveOrCreateGlobalSlot(*VM::Create(StringValue::CreateRaw(name)), slot))
 	{
-		VMValue nativeValue = VM::Create(new Compiler::NativeFunctionValue(name, function, arity));
-		globalSlots[slot] = VM::Create(new Compiler::VMClosureValue(nativeValue, {}));
+		VMValue nativeValue = *VM::Create(new Compiler::NativeFunctionValue(name, function, arity));
+		globalSlots[slot] = *VM::Create(new Compiler::VMClosureValue(nativeValue, {}));
 	}
 	else
 	{
@@ -877,7 +919,7 @@ InterpretResult VM::Interpret(const char* source)
 
 	// Slot 0 is reserved by the compiler for the implicit "function" object.
 	// Wrap the script function in a VMClosureValue so Call() always receives a closure.
-	VMValue scriptClosure = VM::Create(new Compiler::VMClosureValue(compiledFunction, {}));
+	VMValue scriptClosure = *VM::Create(new Compiler::VMClosureValue(compiledFunction, {}));
 	Push(scriptClosure);
 
 	frameCount = 0;

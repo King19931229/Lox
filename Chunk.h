@@ -45,6 +45,7 @@ enum OpCode
 	OP_CLOSURE,
 	OP_GET_UPVALUE,
 	OP_SET_UPVALUE,
+	OP_CLOSE_UPVALUE,
 	OP_RETURN,
 };
 
@@ -110,7 +111,6 @@ struct VMValue
 	// Data for function type
 	Chunk* chunk;
 	VMValue* next = nullptr;
-	bool isMarked = false;
 	VMValue()
 		: value(nullptr)
 		, chunk(nullptr)
@@ -164,7 +164,7 @@ struct Chunk
 	void PrintValueStdout(VMValue value);
 	int32_t ConstantInstruction(const char* name, int32_t offset);
 	int32_t ConstantLongInstruction(const char* name, int32_t offset);
-	int32_t ClosureInstruction(const char* name, int32_t offset);
+	int32_t ClosureInstruction(const char* name, int32_t offset, int32_t indent);
 	int32_t DisassembleInstruction(int32_t offset, int32_t indent = 0);
 	void DisassembleConstant(int32_t index, int32_t indent = 0);
 	void Disassemble(const char* name, int32_t indent = 0);

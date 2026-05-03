@@ -27,6 +27,7 @@ typedef std::shared_ptr<Value> ValuePtr;
 struct Value : public std::enable_shared_from_this<Value>
 {
 	ValueType type;
+	bool isMarked = false;
 	virtual ~Value() = default;
 
 	Value() : type(TYPE_ERROR) {}
@@ -122,11 +123,6 @@ struct StringValue : public Value
 	static ValuePtr Create(const std::string& inValue)
 	{
 		return ValuePtr(CreateRaw(inValue));
-	}
-
-	StringValue& operator=(Value value)
-	{		
-		return *this;
 	}
 
 	operator bool() const override { return !value.empty(); }

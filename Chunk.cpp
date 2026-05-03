@@ -167,7 +167,7 @@ int32_t Chunk::ConstantLongInstruction(const char* name, int32_t offset)
 	return offset + 4;
 }
 
-int32_t Chunk::ClosureInstruction(const char* name, int32_t offset)
+int32_t Chunk::ClosureInstruction(const char* name, int32_t offset, int32_t indent)
 {
 	uint8_t upvalueCount = code[offset + 1];
 	printf("%-16s %4d\n", name, upvalueCount);
@@ -176,6 +176,7 @@ int32_t Chunk::ClosureInstruction(const char* name, int32_t offset)
 	{
 		uint8_t isLocal = code[offset++];
 		uint8_t index = code[offset++];
+		PrintIndent(indent);
 		printf("%04d      |  %s %d\n", offset - 2, isLocal ? "local" : "upvalue", index);
 	}
 	return offset;
@@ -263,11 +264,13 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 		case OP_CALL:
 			return ByteInstruction("OP_CALL", offset);
 		case OP_CLOSURE:
-			return ClosureInstruction("OP_CLOSURE", offset);
+			return ClosureInstruction("OP_CLOSURE", offset, indent);
 		case OP_GET_UPVALUE:
 			return ByteInstruction("OP_GET_UPVALUE", offset);
 		case OP_SET_UPVALUE:
 			return ByteInstruction("OP_SET_UPVALUE", offset);
+		case OP_CLOSE_UPVALUE:
+			return SimpleInstruction("OP_CLOSE_UPVALUE", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;
@@ -279,8 +282,14 @@ void Chunk::DisassembleConstant(int32_t index, int32_t indent)
 	PrintIndent(indent);
 	printf("%4d '", index);
 	PrintValue(constants.values[index]);
-	printf("'");
-	printf("\n");
+	printf("'\n");
+	// If this constant is a nested function, recursively disassemble it.
+	VMValue& val = constants.values[index];
+	if (val.chunk != nullptr && val.value != nullptr)
+	{
+		std::string nestedName = static_cast<std::string>(*val.value);
+		val.chunk->Disassemble(nestedName.c_str(), indent + 1);
+	}
 }
 
 void Chunk::Disassemble(const char* name, int32_t indent)

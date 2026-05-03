@@ -171,6 +171,7 @@ private:
 	{
 		Token name;
 		int   depth   = -1;
+		bool  isCaptured = false;
 		bool  isFinal = false;
 	};
 	std::vector<Local> locals;
