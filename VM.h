@@ -55,14 +55,13 @@ protected:
     VMValue* stacks = nullptr;
     size_t stackCapacity = 255;
     VMValue* stackTop = nullptr;
+	VMValue* openUpvalues = nullptr;
 
 	std::unordered_map<std::string, size_t> globalNameToSlot;
 	std::vector<VMValue> globalSlots;
 
 	CallFrame frames[FRAMES_MAX];
 	uint32_t frameCount = 0;
-
-	std::vector<VMValue> openUpvalues;
 
 	// Stack operations
 	void ResetStack();
@@ -72,6 +71,7 @@ protected:
 	VMValue Pop();
 	VMValue Peek(int32_t distance);
 	VMValue CaptureUpvalue(VMValue* local);
+	void CloseUpvalues(VMValue* last);
 	void Free(VMValue* object);
 
 	// Resolve a global variable slot by name, creating a new slot if it doesn't exist. Returns true on success.

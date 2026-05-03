@@ -272,22 +272,17 @@ int main(int argc, char* argv[])
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
-	var globalSet;
-	var globalGet;
-
-	fun main() {
-	var a = "initial";
-
-	fun set() { a = "updated"; }
-	fun get() { print a; }
-
-	globalSet = set;
-	globalGet = get;
+	fun test() {
+		var x = 0;
+		fun getX() {
+		return x;
+		}
+		return getX;
 	}
-
-	main();
-	globalSet();
-	globalGet();
+	var x = test()();
+	x = x + 1;
+	print x;
+	print test()();
 	)");
 	vm.Free();
 #endif

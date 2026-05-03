@@ -747,6 +747,28 @@ void TestUnit::RunVMTest()
 		{ "var n = 0; var sum = 0; while (n < 5) { n = n + 1; if (n == 3) continue; sum = sum + n; } print sum;", "12\n" },
 		// continue: for 中 continue 后不执行 continue 后面的语句
 		{ "for (var i = 0; i < 3; i = i + 1) { if (i == 1) { continue; print \"unreachable\"; } print i; }", "0\n2\n" },
+
+		// ===== closeUpvalue =====
+		// 基本：变量离开作用域后闭包仍访问正确值
+		{ "var f; { var x = \"closed\"; fun getter() { return x; } f = getter; } print f();", "closed\n" },
+		// 变量先修改再关闭：关闭时必须拿到最新值
+		{ "var f; { var x = \"initial\"; fun getter() { return x; } f = getter; x = \"updated\"; } print f();", "updated\n" },
+		// 共享 upvalue：两个闭包操作同一变量，set 写后 get 读到新值
+		{ "var gs; var gg; fun setup() { var a = \"init\"; fun s() { a = \"mutated\"; } fun g() { return a; } gs = s; gg = g; } setup(); gs(); print gg();", "mutated\n" },
+		// 计数器：upvalue 持有可变状态
+		{ "fun makeCounter() { var n = 0; fun inc() { n = n + 1; return n; } return inc; } var c = makeCounter(); print c(); print c(); print c();", "1\n2\n3\n" },
+		// 两个独立计数器不共享 upvalue
+		{ "fun makeCounter() { var n = 0; fun inc() { n = n + 1; return n; } return inc; } var a = makeCounter(); var b = makeCounter(); print a(); print b(); print a();", "1\n1\n2\n" },
+		// 多层嵌套：capture through upvalue chain
+		{ "fun outer() { var x = \"deep\"; fun middle() { fun inner() { return x; } return inner; } return middle; } print outer()()();", "deep\n" },
+		// 同作用域两个不同变量都被捕获（测试链表多节点排序 + 多次 OP_CLOSE_UPVALUE）
+		{ "var fa; var fb; { var x = 1; var y = 2; fun fx() { return x; } fun fy() { return y; } fa = fx; fb = fy; } print fa(); print fb();", "1\n2\n" },
+		// 同作用域两变量，修改后再关闭
+		{ "var fa; var fb; { var x = 10; var y = 20; fun fx() { return x; } fun fy() { return y; } fa = fx; fb = fy; x = 100; y = 200; } print fa(); print fb();", "100\n200\n" },
+		// 关闭后两闭包仍共享：inc 修改后 get 能读到
+		{ "var inc; var get; { var n = 5; fun i() { n = n + 1; } fun g() { return n; } inc = i; get = g; } inc(); inc(); print get();", "7\n" },
+		// 函数内部作用域关闭后外层可继续读（upvalue 穿越多帧）
+		{ "var result; fun outer() { var x = 42; { fun capture() { return x; } result = capture; } } outer(); print result();", "42\n" },
 	};
 
 #ifdef _WIN32
