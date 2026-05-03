@@ -111,15 +111,18 @@ struct VMValue
 	// Data for function type
 	Chunk* chunk;
 	VMValue* next = nullptr;
+	VMValue* nextUpvalue = nullptr;
 	VMValue()
 		: value(nullptr)
 		, chunk(nullptr)
 		, next(nullptr)
+		, nextUpvalue(nullptr)
 	{}
 	VMValue(Value* inValue, Chunk* inChunk)
 		: value(inValue)
 		, chunk(inChunk)
 		, next(nullptr)
+		, nextUpvalue(nullptr)
 	{}
 };
 

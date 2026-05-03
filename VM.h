@@ -19,6 +19,7 @@ struct CallFrame
 	VMValue closure;
 	uint8_t* ip;
 	VMValue* slots;
+	VMValue* openUpvalues = nullptr;
 
 	inline Chunk* GetChunk()
 	{
@@ -62,8 +63,6 @@ protected:
 	CallFrame frames[FRAMES_MAX];
 	uint32_t frameCount = 0;
 
-	std::vector<VMValue> openUpvalues;
-
 	// Stack operations
 	void ResetStack();
 	void AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks);
@@ -72,6 +71,7 @@ protected:
 	VMValue Pop();
 	VMValue Peek(int32_t distance);
 	VMValue CaptureUpvalue(VMValue* local);
+	void CloseUpvalues(CallFrame& frame, VMValue* last);
 	void Free(VMValue* object);
 
 	// Resolve a global variable slot by name, creating a new slot if it doesn't exist. Returns true on success.

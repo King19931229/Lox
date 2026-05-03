@@ -43,16 +43,16 @@ void VM::AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks)
 		if (frames[i].slots != nullptr)
 		{
 			frames[i].slots = newStacks + (frames[i].slots - oldStacks);
-		}
-	}
-
-	// Rebase open upvalue location pointers that point into the stack.
-	for (VMValue& upvalue : openUpvalues)
-	{
-		UpvalueValue* uv = static_cast<UpvalueValue*>(upvalue.value);
-		if (uv->location >= oldStacks && uv->location < oldStacks + stackCapacity)
-		{
-			uv->location = newStacks + (uv->location - oldStacks);
+			if (frames[i].openUpvalues)
+			{
+				VMValue* upvalue = frames[i].openUpvalues;
+				while (upvalue != nullptr)
+				{
+					UpvalueValue* uv = static_cast<UpvalueValue*>(upvalue->value);
+					uv->location = newStacks + (uv->location - oldStacks);
+					upvalue = upvalue->nextUpvalue;
+				}
+			}
 		}
 	}
 }
@@ -330,24 +330,60 @@ VMValue* VM::Create(Value* value, Chunk* chunk)
 	VM& vm = GetInstance();
 	VMValue* node = new VMValue(value, chunk);
 	node->next = vm.objects;
+	node->nextUpvalue = nullptr;
 	vm.objects = node;
 	return node;
 }
 
 VMValue VM::CaptureUpvalue(VMValue* local)
 {
-	for (VMValue upvalue : openUpvalues)
+	CallFrame& currentFrame = frames[frameCount - 1];
+	VMValue* upvalue = currentFrame.openUpvalues;
+	VMValue* previousUpvalue = nullptr;
+
+	while (upvalue && static_cast<UpvalueValue*>(upvalue->value)->location > local)
 	{
-		if (static_cast<UpvalueValue*>(upvalue.value)->location == local)
-		{
-			return upvalue;
-		}
+		previousUpvalue = upvalue;
+		upvalue = upvalue->nextUpvalue;
 	}
+
+	if (upvalue && static_cast<UpvalueValue*>(upvalue->value)->location == local)
+	{
+		return *upvalue;
+	}
+
 	UpvalueValue* uv = new UpvalueValue(local);
 	uv->location = local;
+
 	VMValue* newUpvalue = VM::Create(uv);
-	openUpvalues.push_back(*newUpvalue);
+	newUpvalue->nextUpvalue = upvalue;
+
+	if (previousUpvalue)
+	{
+		previousUpvalue->nextUpvalue = newUpvalue;
+	}
+	else
+	{
+		currentFrame.openUpvalues = newUpvalue;
+	}
+
 	return *newUpvalue;
+}
+
+void VM::CloseUpvalues(CallFrame& frame, VMValue* last)
+{
+	while (frame.openUpvalues != nullptr)
+	{
+		VMValue* uvNode = frame.openUpvalues;
+		UpvalueValue* upvalue = static_cast<UpvalueValue*>(uvNode->value);
+		if (upvalue->location < last)
+		{
+			break;
+		}
+		upvalue->closed = *upvalue->location;
+		upvalue->location = &upvalue->closed;
+		frame.openUpvalues = uvNode->nextUpvalue;
+	}
 }
 
 InterpretResult VM::Run()
@@ -706,6 +742,8 @@ InterpretResult VM::Run()
 			{
 				CallFrame* frame = &frames[frameCount - 1];
 				VMValue returnValue = Pop();
+				// Close all open upvalues owned by this frame before unwinding.
+				CloseUpvalues(*frame, frame->slots);
 				if (frameCount == 1)
 				{
 					ResetStack();
@@ -790,22 +828,7 @@ InterpretResult VM::Run()
 			case OP_CLOSE_UPVALUE:
 			{
 				CallFrame* frame = &frames[frameCount - 1];
-				uint8_t localIndex = (uint8_t)(stackTop - 1 - frame->slots);
-				// Close any open upvalues that point to the local variable being popped.
-				for (auto it = openUpvalues.begin(); it != openUpvalues.end();)
-				{
-					UpvalueValue* upvalue = static_cast<UpvalueValue*>((*it).value);
-					if (upvalue->location == frame->slots + localIndex)
-					{
-						upvalue->closed = *upvalue->location;
-						upvalue->location = &upvalue->closed;
-						it = openUpvalues.erase(it);
-					}
-					else
-					{
-						++it;
-					}
-				}
+				CloseUpvalues(*frame, stackTop - 1);
 				Pop();
 				break;
 			}
