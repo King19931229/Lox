@@ -9,6 +9,8 @@
 #include <chrono>
 
 // #define DEBUG_TRACE_EXECUTION
+#define DEBUG_STRESS_GC
+#define DEBUG_LOG_GC
 // #define USE_LOCAL_IP
 
 namespace
@@ -24,6 +26,32 @@ VMValue clock(int argCount, VMValue* args)
 }
 
 VM* VM::instance = nullptr;
+
+void VM::PushCompilerRoot(Compiler* compiler)
+{
+	if (compiler == nullptr)
+	{
+		return;
+	}
+	compilerRoots.push_back(compiler);
+}
+
+void VM::PopCompilerRoot(Compiler* compiler)
+{
+	if (compiler == nullptr || compilerRoots.empty())
+	{
+		return;
+	}
+
+	for (auto it = compilerRoots.rbegin(); it != compilerRoots.rend(); ++it)
+	{
+		if (*it == compiler)
+		{
+			compilerRoots.erase((it + 1).base());
+			return;
+		}
+	}
+}
 
 void VM::ResetStack()
 {
@@ -285,12 +313,29 @@ void VM::Init()
 {
 	objects = nullptr;
 	openUpvalues = nullptr;
-	DefineNative("clock", clock, 0);
-	ResetStack();
 	frameCount = 0;
+	ResetStack();
+	DefineNative("clock", clock, 0);
 }
 
-void VM::Free(Value* object)
+void VM::Reset()
+{
+	Free();
+	globalNameToSlot.clear();
+	globalSlots.clear();
+	compilerRoots.clear();
+	Init();
+}
+
+void VM::Free()
+{
+	while (objects != nullptr)
+	{
+		FreeValue(objects);
+	}
+}
+
+void VM::FreeValue(Value* object)
 {
 	if (object == nullptr)
 	{
@@ -329,31 +374,36 @@ void VM::Free(Value* object)
 		chunk->Free();
 		delete chunk;
 	}
-	delete object;
-}
 
-void VM::Free()
-{
-	while (objects != nullptr)
-	{
-		Free(objects);
-	}
+#ifdef DEBUG_LOG_GC
+	printf("Freed object %p of type %s\n", (void*)object, ValueTypeToString(object->type));
+#endif
+
+	delete object;
 }
 
 Value* VM::AllocValue(Value* value)
 {
+#ifdef DEBUG_STRESS_GC
+	CollectGarbage();
+#endif
+
 	if (!value) return nullptr;
-	VM& vm = GetInstance();
-	value->nextGCValue = vm.objects;
+	value->nextGCValue = objects;
 	value->isMarked = false;
-	vm.objects = value;
+	objects = value;
+
+#ifdef DEBUG_LOG_GC
+	printf("Allocated object %p of type %s\n", (void*)value, ValueTypeToString(value->type));
+#endif
+
 	return value;
 }
 
 VMValue VM::Create(Value* value)
 {
-	Value* object = AllocValue(value);
-	return object ? VMValue(object, nullptr) : VMValue();
+	Value* object = GetInstance().AllocValue(value);
+	return object ? VMValue(object) : VMValue();
 }
 
 VMValue VM::CaptureUpvalue(VMValue* local)
@@ -369,7 +419,7 @@ VMValue VM::CaptureUpvalue(VMValue* local)
 
 	if (upvalue && upvalue->location == local)
 	{
-		return VMValue(upvalue, nullptr);
+		return VMValue(upvalue);
 	}
 
 	UpvalueValue* uv = new UpvalueValue(local);
@@ -386,7 +436,7 @@ VMValue VM::CaptureUpvalue(VMValue* local)
 		openUpvalues = uv;
 	}
 
-	return VMValue(uv, nullptr);
+	return VMValue(uv);
 }
 
 void VM::CloseUpvalues(VMValue* last)
@@ -860,7 +910,9 @@ InterpretResult VM::Run()
 InterpretResult VM::Interpret(VMValue function)
 {
 	frameCount = 0;
+	Push(function);
 	VMValue closure = VM::Create(new Compiler::VMClosureValue(function, {}));
+	Pop();
 	Push(closure);
 	if (!Call(closure, 0))
 	{
@@ -959,9 +1011,14 @@ InterpretResult VM::Interpret(const char* source)
 		return INTERPRET_COMPILE_ERROR;
 	}
 
-	// Slot 0 is reserved by the compiler for the implicit "function" object.
+	// Push the compiled function onto the stack so it is reachable by the GC while the initial call frame is being set up.
+	Push(compiledFunction);
 	// Wrap the script function in a VMClosureValue so Call() always receives a closure.
 	VMValue scriptClosure = VM::Create(new Compiler::VMClosureValue(compiledFunction, {}));
+	// Remove the compiled function from the stack since it's now referenced by the closure
+	Pop();
+
+	// Slot 0 is reserved by the compiler for the implicit "function" object.	
 	Push(scriptClosure);
 
 	frameCount = 0;
@@ -977,11 +1034,109 @@ InterpretResult VM::Interpret(const char* source)
 
 void VM::MarkValue(VMValue value)
 {
-	(void)value;
+	if (value.value == nullptr || value.value->isMarked)
+	{
+		return;
+	}
+#ifdef DEBUG_LOG_GC
+	printf("Mark object %p of type %s\n", (void*)value.value, ValueTypeToString(value.value->type));
+#endif
+	value.value->isMarked = true;
+	switch (value.value->type)
+	{
+		case TYPE_CALLABLE:
+		{
+			Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(value.value);
+			if (functionValue->GetType() == Compiler::VM_FUNC_SCRIPT ||
+				functionValue->GetType() == Compiler::VM_FUNC_FUNCTION)
+			{
+				Chunk* chunk = functionValue->GetChunk();
+				for(int32_t i = 0; i < chunk->constants.count; ++i)
+				{
+					MarkValue(chunk->constants.values[i]);
+				}
+			}
+			if (functionValue->GetType() == Compiler::VM_FUNC_CLOSURE)
+			{
+				Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(value.value);
+				MarkValue(closureValue->function);
+				for (const VMValue& upvalue : closureValue->upvalues)
+				{
+					MarkValue(upvalue);
+				}
+			}
+			break;
+		}
+		case TYPE_UPVALUE:
+		{
+			UpvalueValue* upvalue = static_cast<UpvalueValue*>(value.value);
+			if (upvalue->location != nullptr)
+			{
+				MarkValue(*upvalue->location);
+			}
+			break;
+		}
+		default:
+			break;
+	}
+}
+
+void VM::MarkRoots()
+{
+	for (VMValue* slot = stacks; slot < stackTop; ++slot)
+	{
+		MarkValue(*slot);
+	}
+	for (uint32_t i = 0; i < frameCount; ++i)
+	{
+		CallFrame& frame = frames[i];
+		MarkValue(frame.closure);
+	}
+	for (UpvalueValue* upvalue = openUpvalues; upvalue != nullptr; upvalue = upvalue->nextUpvalue)
+	{
+		MarkValue(VMValue(upvalue));
+	}
+	for (VMValue& global : globalSlots)
+	{
+		MarkValue(global);
+	}
+	MarkCompilerRoots();
+}
+
+void VM::MarkCompilerRoots()
+{
+	for (Compiler* compiler : compilerRoots)
+	{
+		if (compiler != nullptr)
+		{
+			MarkValue(compiler->function);
+		}
+	}
 }
 
 void VM::CollectGarbage()
 {
+#ifdef DEBUG_LOG_GC
+	printf("GC Begin\n");
+#endif
+	MarkRoots();
+	for (Value* object = objects; object != nullptr; )
+	{
+		if (!object->isMarked)
+		{
+			Value* unreached = object;
+			object = object->nextGCValue;
+			FreeValue(unreached);
+		}
+		else
+		{
+			object->isMarked = false;
+			object = object->nextGCValue;
+		}
+	}
+#ifdef DEBUG_LOG_GC
+	printf("GC End\n");
+#endif
 }
 
 void VM::Repl()

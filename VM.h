@@ -34,6 +34,7 @@ class VM
 {
 public:
 	friend struct VMValue;
+	friend class Compiler;
 	Value* objects = nullptr;
 protected:
 	static VM* instance;
@@ -60,6 +61,7 @@ protected:
 
 	std::unordered_map<std::string, size_t> globalNameToSlot;
 	std::vector<VMValue> globalSlots;
+	std::vector<Compiler*> compilerRoots;
 
 	CallFrame frames[FRAMES_MAX];
 	uint32_t frameCount = 0;
@@ -73,8 +75,9 @@ protected:
 	VMValue Peek(int32_t distance);
 	VMValue CaptureUpvalue(VMValue* local);
 	void CloseUpvalues(VMValue* last);
-	void Free(Value* object);
-	static Value* AllocValue(Value* value);
+
+	void FreeValue(Value* object);
+	Value* AllocValue(Value* value);
 
 	// Resolve a global variable slot by name, creating a new slot if it doesn't exist. Returns true on success.
 	bool ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot, const uint8_t* instructionIp = nullptr);
@@ -89,6 +92,11 @@ protected:
 	void RuntimeError(const uint8_t* instructionIp, const char* format, ...);
 	void RuntimeErrorImpl(const uint8_t* instructionIp, const char* format, va_list args);
 
+	void MarkRoots();
+	void MarkValue(VMValue value);
+	void MarkCompilerRoots();
+	void PushCompilerRoot(Compiler* compiler);
+	void PopCompilerRoot(Compiler* compiler);
 public:
 	static VM& GetInstance()
 	{
@@ -101,6 +109,7 @@ public:
 
 	// VM lifecycle
 	void Init();
+	void Reset();
 	void Free();
 	static VMValue Create(Value* value);
 
@@ -111,8 +120,7 @@ public:
 	InterpretResult Interpret(VMValue function);
 	InterpretResult Interpret(const char* source);
 
-	static void CollectGarbage();
-	static void MarkValue(VMValue value);
+	void CollectGarbage();
 
 	void DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity);
 

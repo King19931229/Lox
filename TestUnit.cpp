@@ -325,22 +325,10 @@ struct VMRunResult
 	InterpretResult result = INTERPRET_OK;
 };
 
-class VMTestHarness : public VM
-{
-public:
-	void Reset()
-	{
-		Free();
-		Init();
-		globalNameToSlot.clear();
-		globalSlots.clear();
-	}
-};
-
 VMRunResult RunVMWithCapture(const std::string& source)
 {
 	VMRunResult runResult;
-	VMTestHarness vm;
+	VM& vm = VM::GetInstance();
 	vm.Reset();
 	// Capture std::cout like other helpers (Chunk::PrintValue now uses std::cout)
 	std::streambuf* oldCout = std::cout.rdbuf();

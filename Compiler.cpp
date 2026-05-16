@@ -15,7 +15,7 @@ Compiler::Compiler()
 {
 	compilingChunk = new Chunk();
 	compilingChunk->Init();
-	function = VMValue(nullptr, compilingChunk);
+	function = VMValue();
 	type = TYPE_SCRIPT;
 }
 
@@ -30,11 +30,13 @@ Compiler::Compiler(Compiler* inEnclosing, ParseContext* sharedCtx)
 {
 	compilingChunk = new Chunk();
 	compilingChunk->Init();
-	function = VMValue(nullptr, compilingChunk);
+	function = VMValue();
 }
 
 Compiler::~Compiler()
 {
+	VM::GetInstance().PopCompilerRoot(this);
+
 	if (compilingChunk)
 	{
 		compilingChunk->Free();
@@ -58,6 +60,7 @@ void Compiler::Init(FunctionType inType, const std::string& name)
 	{
 		function = VM::Create(new Compiler::VMFunctionValue(name, compilingChunk));
 	}
+	VM::GetInstance().PushCompilerRoot(this);
 	locals.clear();
 	scopeDepth = 0;
 	currentLoopStart = -1;
@@ -642,6 +645,7 @@ VMValue Compiler::EndCompiler()
 
 	// The function object is already owned by the VM; return its handle.
 	VMValue result = function;
+	VM::GetInstance().PopCompilerRoot(this);
 	// Clear local references so the destructor doesn't double-free.
 	function.value = nullptr;
 	compilingChunk = nullptr;

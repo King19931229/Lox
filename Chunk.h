@@ -111,12 +111,9 @@ struct VMValue
 	VMValue()
 		: value(nullptr)
 	{}
-	VMValue(Value* inValue, Chunk* inChunk)
+	VMValue(Value* inValue)
 		: value(inValue)
-	{
-		(void)inChunk;
-	}
-
+	{}
 	Chunk* GetChunk() const { return value ? value->GetChunk() : nullptr; }
 };
 

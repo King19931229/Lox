@@ -173,6 +173,24 @@ struct NilValue : public Value
 	if ((left)->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(left)->message); \
 	if ((right)->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(right)->message);
 
+inline const char* ValueTypeToString(ValueType type)
+{
+	switch (type)
+	{
+		case TYPE_INT:      return "Int";
+		case TYPE_FLOAT:    return "Float";
+		case TYPE_STRING:   return "String";
+		case TYPE_BOOL:     return "Bool";
+		case TYPE_NIL:      return "Nil";
+		case TYPE_CALLABLE: return "Callable";
+		case TYPE_CLASS:    return "Class";
+		case TYPE_INSTANCE: return "Instance";
+		case TYPE_UPVALUE:  return "Upvalue";
+		case TYPE_ERROR:    return "Error";
+		default:            return "Unknown";
+	}
+}
+
 inline Value* ValNegate(const Value* val)
 {
 	if (val->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(val)->message);
