@@ -118,10 +118,10 @@ int32_t Chunk::ThreeByteInstruction(const char* name, int32_t offset)
 
 int32_t Chunk::JumpInstruction(const char* name, int32_t sign, int32_t offset)
 {
-    int32_t jump = (int32_t)((code[offset + 1] << 8) | code[offset + 2]);
-    int32_t target = offset + 3 + sign * jump;
-    printf("%-16s %4d -> %d\n", name, offset, target);
-    return offset + 3;
+	int32_t jump = (int32_t)((code[offset + 1] << 8) | code[offset + 2]);
+	int32_t target = offset + 3 + sign * jump;
+	printf("%-16s %4d -> %d\n", name, offset, target);
+	return offset + 3;
 }
 
 void Chunk::PrintValue(VMValue value)
@@ -285,10 +285,10 @@ void Chunk::DisassembleConstant(int32_t index, int32_t indent)
 	printf("'\n");
 	// If this constant is a nested function, recursively disassemble it.
 	VMValue& val = constants.values[index];
-	if (val.chunk != nullptr && val.value != nullptr)
+	if (val.GetChunk() != nullptr && val.value != nullptr)
 	{
 		std::string nestedName = static_cast<std::string>(*val.value);
-		val.chunk->Disassemble(nestedName.c_str(), indent + 1);
+		val.GetChunk()->Disassemble(nestedName.c_str(), indent + 1);
 	}
 }
 

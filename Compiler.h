@@ -38,8 +38,14 @@ public:
 	// Inherits directly from Value so no extra headers are needed.
 	struct ScriptFunction : public VMFunctionBase
 	{
-		explicit ScriptFunction() { this->type = TYPE_CALLABLE; }
+		Chunk* chunk = nullptr;
+		explicit ScriptFunction(Chunk* inChunk = nullptr)
+			: chunk(inChunk)
+		{
+			this->type = TYPE_CALLABLE;
+		}
 		int Arity() const override { return 0; }
+		Chunk* GetChunk() const override { return chunk; }
 		operator std::string() const override { return "<script>"; }
 		VMFunctionType GetType() const override { return VM_FUNC_SCRIPT; }
 	};
@@ -50,8 +56,15 @@ public:
 		std::string name;
 		int32_t arity = 0;
 		int32_t upvalueCount = 0;
-		explicit VMFunctionValue(const std::string& inName) : name(inName) { this->type = TYPE_CALLABLE; }
+		Chunk* chunk = nullptr;
+		explicit VMFunctionValue(const std::string& inName, Chunk* inChunk = nullptr)
+			: name(inName)
+			, chunk(inChunk)
+		{
+			this->type = TYPE_CALLABLE;
+		}
 		int Arity() const override { return arity; }
+		Chunk* GetChunk() const override { return chunk; }
 		operator std::string() const override { return "<fn " + name + ">"; }
 		VMFunctionType GetType() const override { return VM_FUNC_FUNCTION; }
 	};
@@ -90,6 +103,10 @@ public:
 		{
 			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.value);
 			return functionValue->Arity();
+		}
+		Chunk* GetChunk() const override
+		{
+			return function.GetChunk();
 		}
 		operator std::string() const override
 		{

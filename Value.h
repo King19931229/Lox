@@ -20,6 +20,7 @@ enum ValueType
 	TYPE_ERROR // Error type
 };
 
+struct Chunk;
 struct Value;
 typedef std::shared_ptr<Value> ValuePtr;
 
@@ -28,6 +29,7 @@ struct Value : public std::enable_shared_from_this<Value>
 {
 	ValueType type;
 	bool isMarked = false;
+	Value* nextGCValue = nullptr;
 	virtual ~Value() = default;
 
 	Value() : type(TYPE_ERROR) {}
@@ -43,6 +45,7 @@ struct Value : public std::enable_shared_from_this<Value>
 	virtual operator float() const { Lox::GetInstance().RuntimeError("Invalid conversion to float."); return 0.0f; }
 	virtual operator bool() const { Lox::GetInstance().RuntimeError("Invalid conversion to bool."); return false; }
 	virtual operator std::string() const { Lox::GetInstance().RuntimeError("Invalid conversion to string."); return ""; }
+	virtual Chunk* GetChunk() const { return nullptr; }
 };
 
 // --- Concrete Value types ---
@@ -167,8 +170,8 @@ struct NilValue : public Value
 // --- Raw Value* helper functions (C++ forbids operator overloads on pure pointer types) ---
 
 #define VAL_PROPAGATE_ERROR(left, right) \
-    if ((left)->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(left)->message); \
-    if ((right)->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(right)->message);
+	if ((left)->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(left)->message); \
+	if ((right)->type == TYPE_ERROR) return ErrorValue::CreateRaw(static_cast<const ErrorValue*>(right)->message);
 
 inline Value* ValNegate(const Value* val)
 {

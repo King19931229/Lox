@@ -20,7 +20,7 @@ VMValue clock(int argCount, VMValue* args)
 {
 	static const auto startTime = std::chrono::steady_clock::now();
 	auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - startTime);
-	return *VM::Create(FloatValue::CreateRaw(elapsed.count()));
+	return VM::Create(FloatValue::CreateRaw(elapsed.count()));
 }
 
 VM* VM::instance = nullptr;
@@ -46,11 +46,10 @@ void VM::AdjustFrameSlots(VMValue* oldStacks, VMValue* newStacks)
 		}
 	}
 
-	VMValue* upvalue = openUpvalues;
+	UpvalueValue* upvalue = openUpvalues;
 	while (upvalue != nullptr)
 	{
-		UpvalueValue* uv = static_cast<UpvalueValue*>(upvalue->value);
-		uv->location = newStacks + (uv->location - oldStacks);
+		upvalue->location = newStacks + (upvalue->location - oldStacks);
 		upvalue = upvalue->nextUpvalue;
 	}
 }
@@ -236,11 +235,11 @@ void VM::RuntimeErrorImpl(const uint8_t* instructionIp, const char* format, va_l
 
 	while (openUpvalues != nullptr)
 	{
-		VMValue* uvNode = openUpvalues;
-		UpvalueValue* upvalue = static_cast<UpvalueValue*>(uvNode->value);
+		UpvalueValue* upvalue = openUpvalues;
 		upvalue->closed = *upvalue->location;
 		upvalue->location = &upvalue->closed;
-		openUpvalues = uvNode->nextUpvalue;
+		openUpvalues = upvalue->nextUpvalue;
+		upvalue->nextUpvalue = nullptr;
 	}
 
 	ResetStack();
@@ -278,7 +277,7 @@ InterpretResult VM::Negate(const uint8_t* instructionIp)
 	}
 
 	VMValue top = *(stackTop - 1);
-	*(stackTop - 1) = *VM::Create(ValNegate(top.value));
+	*(stackTop - 1) = VM::Create(ValNegate(top.value));
 	return INTERPRET_OK;
 }
 
@@ -291,7 +290,7 @@ void VM::Init()
 	frameCount = 0;
 }
 
-void VM::Free(VMValue* object)
+void VM::Free(Value* object)
 {
 	if (object == nullptr)
 	{
@@ -301,25 +300,34 @@ void VM::Free(VMValue* object)
 	// Remove from the intrusive linked list before deleting
 	if (objects == object)
 	{
-		objects = object->next;
+		objects = object->nextGCValue;
 	}
 	else
 	{
-		for (VMValue* curr = objects; curr != nullptr; curr = curr->next)
+		for (Value* curr = objects; curr != nullptr; curr = curr->nextGCValue)
 		{
-			if (curr->next == object)
+			if (curr->nextGCValue == object)
 			{
-				curr->next = object->next;
+				curr->nextGCValue = object->nextGCValue;
 				break;
 			}
 		}
 	}
 
-	delete object->value;
-	if (object->chunk)
+	Chunk* chunk = nullptr;
+	if (object->type == TYPE_CALLABLE)
 	{
-		object->chunk->Free();
-		delete object->chunk;
+		Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(object);
+		if (functionValue->GetType() == Compiler::VM_FUNC_SCRIPT ||
+			functionValue->GetType() == Compiler::VM_FUNC_FUNCTION)
+		{
+			chunk = functionValue->GetChunk();
+		}
+	}
+	if (chunk)
+	{
+		chunk->Free();
+		delete chunk;
 	}
 	delete object;
 }
@@ -332,64 +340,70 @@ void VM::Free()
 	}
 }
 
-VMValue* VM::Create(Value* value, Chunk* chunk)
+Value* VM::AllocValue(Value* value)
 {
 	if (!value) return nullptr;
 	VM& vm = GetInstance();
-	VMValue* node = new VMValue(value, chunk);
-	node->next = vm.objects;
-	node->nextUpvalue = nullptr;
-	vm.objects = node;
-	return node;
+	value->nextGCValue = vm.objects;
+	value->isMarked = false;
+	vm.objects = value;
+	return value;
+}
+
+VMValue VM::Create(Value* value)
+{
+	Value* object = AllocValue(value);
+	return object ? VMValue(object, nullptr) : VMValue();
 }
 
 VMValue VM::CaptureUpvalue(VMValue* local)
 {
-	VMValue* upvalue = openUpvalues;
-	VMValue* previousUpvalue = nullptr;
+	UpvalueValue* upvalue = openUpvalues;
+	UpvalueValue* previousUpvalue = nullptr;
 
-	while (upvalue && static_cast<UpvalueValue*>(upvalue->value)->location > local)
+	while (upvalue && upvalue->location > local)
 	{
 		previousUpvalue = upvalue;
 		upvalue = upvalue->nextUpvalue;
 	}
 
-	if (upvalue && static_cast<UpvalueValue*>(upvalue->value)->location == local)
+	if (upvalue && upvalue->location == local)
 	{
-		return *upvalue;
+		return VMValue(upvalue, nullptr);
 	}
 
 	UpvalueValue* uv = new UpvalueValue(local);
 	uv->location = local;
-
-	VMValue* newUpvalue = VM::Create(uv);
-	newUpvalue->nextUpvalue = upvalue;
+	AllocValue(uv);
+	uv->nextUpvalue = upvalue;
 
 	if (previousUpvalue)
 	{
-		previousUpvalue->nextUpvalue = newUpvalue;
+		previousUpvalue->nextUpvalue = uv;
 	}
 	else
 	{
-		openUpvalues = newUpvalue;
+		openUpvalues = uv;
 	}
 
-	return *newUpvalue;
+	return VMValue(uv, nullptr);
 }
 
 void VM::CloseUpvalues(VMValue* last)
 {
 	while (openUpvalues != nullptr)
 	{
-		VMValue* uvNode = openUpvalues;
-		UpvalueValue* upvalue = static_cast<UpvalueValue*>(uvNode->value);
+		UpvalueValue* upvalue = openUpvalues;
 		if (upvalue->location < last)
 		{
 			break;
 		}
+		// Copy the value from the location to the closed value.
 		upvalue->closed = *upvalue->location;
+		// Set the location to the closed value.
 		upvalue->location = &upvalue->closed;
-		openUpvalues = uvNode->nextUpvalue;
+		openUpvalues = upvalue->nextUpvalue;
+		upvalue->nextUpvalue = nullptr;
 	}
 }
 
@@ -433,6 +447,23 @@ InterpretResult VM::Run()
 		return ((uint32_t)READ_BYTE() << 16) | ((uint32_t)READ_BYTE() << 8) | (uint32_t)READ_BYTE();
 	};
 
+	auto PUSH_RAW_RESULT = [&](Value* value) {
+		if (value == nullptr)
+		{
+			RuntimeError(IP, "Operation produced a null value.");
+			return INTERPRET_RUNTIME_ERROR;
+		}
+		if (value->type == TYPE_ERROR)
+		{
+			std::string message = static_cast<std::string>(*value);
+			delete value;
+			RuntimeError(IP, "%s", message.c_str());
+			return INTERPRET_RUNTIME_ERROR;
+		}
+		Push(VM::Create(value));
+		return INTERPRET_OK;
+	};
+
 	auto BINARY_OP = [&](OpCode op) {
 		VMValue b = Pop();
 		VMValue a = Pop();
@@ -447,45 +478,27 @@ InterpretResult VM::Run()
 		{
 			case OP_ADD:
 			{
-				Value* out = ValAdd(a.value, b.value);
-				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(*VM::Create(out));
-				break;
+				return PUSH_RAW_RESULT(ValAdd(a.value, b.value));
 			}
 			case OP_SUBTRACT:
 			{
-				Value* out = ValSub(a.value, b.value);
-				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(*VM::Create(out));
-				break;
+				return PUSH_RAW_RESULT(ValSub(a.value, b.value));
 			}
 			case OP_MULTIPLY:
 			{
-				Value* out = ValMul(a.value, b.value);
-				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(*VM::Create(out));
-				break;
+				return PUSH_RAW_RESULT(ValMul(a.value, b.value));
 			}
 			case OP_DIVIDE:
 			{
-				Value* out = ValDiv(a.value, b.value);
-				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(*VM::Create(out));
-				break;
+				return PUSH_RAW_RESULT(ValDiv(a.value, b.value));
 			}
 			case OP_GREATER:
 			{
-				Value* out = ValGreater(a.value, b.value);
-				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(*VM::Create(out));
-				break;
+				return PUSH_RAW_RESULT(ValGreater(a.value, b.value));
 			}
 			case OP_LESS:
 			{
-				Value* out = ValLess(a.value, b.value);
-				if (out->type == TYPE_ERROR) return INTERPRET_RUNTIME_ERROR;
-				Push(*VM::Create(out));
-				break;
+				return PUSH_RAW_RESULT(ValLess(a.value, b.value));
 			}
 			default:
 				// Handle unknown operation (could throw an exception or abort)
@@ -501,13 +514,11 @@ InterpretResult VM::Run()
 		VMValue a = Pop();
 		if (IsString(a) && IsString(b))
 		{
-			Push(*VM::Create(ValAdd(a.value, b.value)));
-			return INTERPRET_OK;
+			return PUSH_RAW_RESULT(ValAdd(a.value, b.value));
 		}
 		else if (IsNumber(a) && IsNumber(b))
 		{
-			Push(*VM::Create(ValAdd(a.value, b.value)));
-			return INTERPRET_OK;
+			return PUSH_RAW_RESULT(ValAdd(a.value, b.value));
 		}
 		else
 		{
@@ -518,7 +529,7 @@ InterpretResult VM::Run()
 
 	auto NOT_OP = [&]() {
 		VMValue value = Pop();
-		Push(*VM::Create(BoolValue::CreateRaw(IsFalsey(value))));
+		Push(VM::Create(BoolValue::CreateRaw(IsFalsey(value))));
 		return INTERPRET_OK;
 	};
 
@@ -549,17 +560,17 @@ InterpretResult VM::Run()
 			}
 			case OP_NIL:
 			{
-				Push(*VM::Create(NilValue::CreateRaw()));
+				Push(VM::Create(NilValue::CreateRaw()));
 				break;
 			}
 			case OP_TRUE:
 			{
-				Push(*VM::Create(BoolValue::CreateRaw(true)));
+				Push(VM::Create(BoolValue::CreateRaw(true)));
 				break;
 			}
 			case OP_FALSE:
 			{
-				Push(*VM::Create(BoolValue::CreateRaw(false)));
+				Push(VM::Create(BoolValue::CreateRaw(false)));
 				break;
 			}
 			case OP_NEGATE:
@@ -606,7 +617,7 @@ InterpretResult VM::Run()
 			{
 				VMValue b = Pop();
 				VMValue a = Pop();
-				Push(*VM::Create(BoolValue::CreateRaw(IsEqual(a.value, b.value))));
+				Push(VM::Create(BoolValue::CreateRaw(IsEqual(a.value, b.value))));
 				break;
 			}
 			case OP_PRINT:
@@ -754,6 +765,7 @@ InterpretResult VM::Run()
 				if (frameCount == 1)
 				{
 					ResetStack();
+					frameCount = 0;
 					return INTERPRET_OK;
 				}
 				// Restore the stack to the callee slot so the caller's locals stay intact.
@@ -800,7 +812,7 @@ InterpretResult VM::Run()
 						upvalues.push_back(frames[frameCount - 1].GetUpvalues()[index]);
 					}
 				}
-				VMValue closure = *VM::Create(new Compiler::VMClosureValue(functionValue, upvalues));
+				VMValue closure = VM::Create(new Compiler::VMClosureValue(functionValue, upvalues));
 				Push(closure);
 				break;
 			}
@@ -848,7 +860,7 @@ InterpretResult VM::Run()
 InterpretResult VM::Interpret(VMValue function)
 {
 	frameCount = 0;
-	VMValue closure = *VM::Create(new Compiler::VMClosureValue(function, {}));
+	VMValue closure = VM::Create(new Compiler::VMClosureValue(function, {}));
 	Push(closure);
 	if (!Call(closure, 0))
 	{
@@ -876,7 +888,7 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 
 	Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(function.value);
 
-	if (!functionValue || (functionValue->GetType() != Compiler::VM_FUNC_NATIVE && !function.chunk))
+	if (!functionValue || (functionValue->GetType() != Compiler::VM_FUNC_NATIVE && !function.GetChunk()))
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;
@@ -900,7 +912,7 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 	}
 	else
 	{
-		if (!function.chunk)
+		if (!function.GetChunk())
 		{
 			RuntimeError(instructionIp, "Can only call functions with bytecode.");
 			return false;
@@ -926,10 +938,10 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 void VM::DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity)
 {
 	size_t slot = -1;
-	if (ResolveOrCreateGlobalSlot(*VM::Create(StringValue::CreateRaw(name)), slot))
+	if (ResolveOrCreateGlobalSlot(VM::Create(StringValue::CreateRaw(name)), slot))
 	{
-		VMValue nativeValue = *VM::Create(new Compiler::NativeFunctionValue(name, function, arity));
-		globalSlots[slot] = *VM::Create(new Compiler::VMClosureValue(nativeValue, {}));
+		VMValue nativeValue = VM::Create(new Compiler::NativeFunctionValue(name, function, arity));
+		globalSlots[slot] = VM::Create(new Compiler::VMClosureValue(nativeValue, {}));
 	}
 	else
 	{
@@ -949,7 +961,7 @@ InterpretResult VM::Interpret(const char* source)
 
 	// Slot 0 is reserved by the compiler for the implicit "function" object.
 	// Wrap the script function in a VMClosureValue so Call() always receives a closure.
-	VMValue scriptClosure = *VM::Create(new Compiler::VMClosureValue(compiledFunction, {}));
+	VMValue scriptClosure = VM::Create(new Compiler::VMClosureValue(compiledFunction, {}));
 	Push(scriptClosure);
 
 	frameCount = 0;
@@ -961,6 +973,15 @@ InterpretResult VM::Interpret(const char* source)
 	InterpretResult result = Run();
 
 	return result;
+}
+
+void VM::MarkValue(VMValue value)
+{
+	(void)value;
+}
+
+void VM::CollectGarbage()
+{
 }
 
 void VM::Repl()

@@ -82,7 +82,7 @@ bool Scanner::IsDigit(char c)
 bool Scanner::IsAlpha(char c)
 {
 	return (c >= 'a' && c <= 'z') ||
-	       (c >= 'A' && c <= 'Z');
+		   (c >= 'A' && c <= 'Z');
 }
 
 char Scanner::Advance()
@@ -177,41 +177,41 @@ void Scanner::String()
 void Scanner::Number()
 {
 	// Deal with the integer part
-    while (IsDigit(Peek()))
-    {
-        Advance();
-    }
+	while (IsDigit(Peek()))
+	{
+		Advance();
+	}
 
 	// Deal with the fractional part
-    if (Peek() == '.' && IsDigit(PeekNext()))
-    {
-        Advance(); // consume '.'
-        while (IsDigit(Peek()))
-        {
-            Advance();
-        }
-    }
+	if (Peek() == '.' && IsDigit(PeekNext()))
+	{
+		Advance(); // consume '.'
+		while (IsDigit(Peek()))
+		{
+			Advance();
+		}
+	}
 
 	// Deal with the exponent part
-    if (Peek() == 'e' || Peek() == 'E')
-    {
-        Advance(); // consume 'e' or 'E'
-        if (Peek() == '+' || Peek() == '-')
-        {
-            Advance();
-        }
-        if (!IsDigit(Peek()))
-        {
-            Lox::GetInstance().Error(line, column, "Malformed number: exponent has no digits.");
-            return;
-        }
-        while (IsDigit(Peek()))
-        {
-            Advance();
-        }
-    }
+	if (Peek() == 'e' || Peek() == 'E')
+	{
+		Advance(); // consume 'e' or 'E'
+		if (Peek() == '+' || Peek() == '-')
+		{
+			Advance();
+		}
+		if (!IsDigit(Peek()))
+		{
+			Lox::GetInstance().Error(line, column, "Malformed number: exponent has no digits.");
+			return;
+		}
+		while (IsDigit(Peek()))
+		{
+			Advance();
+		}
+	}
 
-    AddToken(NUMBER);
+	AddToken(NUMBER);
 }
 
 void Scanner::Identifier()

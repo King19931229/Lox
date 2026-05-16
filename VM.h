@@ -22,7 +22,7 @@ struct CallFrame
 
 	inline Chunk* GetChunk()
 	{
-		return static_cast<Compiler::VMClosureValue*>(closure.value)->function.chunk;
+		return static_cast<Compiler::VMClosureValue*>(closure.value)->function.GetChunk();
 	}
 	inline std::vector<VMValue>& GetUpvalues()
 	{
@@ -34,7 +34,7 @@ class VM
 {
 public:
 	friend struct VMValue;
-	VMValue* objects = nullptr;
+	Value* objects = nullptr;
 protected:
 	static VM* instance;
 
@@ -45,6 +45,7 @@ protected:
 	{
 		VMValue* location = nullptr;
 		VMValue closed;
+		UpvalueValue* nextUpvalue = nullptr;
 		UpvalueValue(VMValue* inLocation)
 			: location(inLocation)
 		{
@@ -52,10 +53,10 @@ protected:
 		}
 	};
 
-    VMValue* stacks = nullptr;
-    size_t stackCapacity = 255;
-    VMValue* stackTop = nullptr;
-	VMValue* openUpvalues = nullptr;
+	VMValue* stacks = nullptr;
+	size_t stackCapacity = 255;
+	VMValue* stackTop = nullptr;
+	UpvalueValue* openUpvalues = nullptr;
 
 	std::unordered_map<std::string, size_t> globalNameToSlot;
 	std::vector<VMValue> globalSlots;
@@ -72,7 +73,8 @@ protected:
 	VMValue Peek(int32_t distance);
 	VMValue CaptureUpvalue(VMValue* local);
 	void CloseUpvalues(VMValue* last);
-	void Free(VMValue* object);
+	void Free(Value* object);
+	static Value* AllocValue(Value* value);
 
 	// Resolve a global variable slot by name, creating a new slot if it doesn't exist. Returns true on success.
 	bool ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot, const uint8_t* instructionIp = nullptr);
@@ -100,7 +102,7 @@ public:
 	// VM lifecycle
 	void Init();
 	void Free();
-	static VMValue* Create(Value* value, Chunk* chunk = nullptr);
+	static VMValue Create(Value* value);
 
 	// Execution
 	InterpretResult Run();
@@ -108,6 +110,9 @@ public:
 	bool Call(VMValue callee, int argCount, const uint8_t* instructionIp = nullptr);
 	InterpretResult Interpret(VMValue function);
 	InterpretResult Interpret(const char* source);
+
+	static void CollectGarbage();
+	static void MarkValue(VMValue value);
 
 	void DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity);
 

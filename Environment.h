@@ -139,13 +139,13 @@ public:
 		}
 		Lox::GetInstance().RuntimeError(line, column, "Undefined variable '%s'.", name.c_str());
 	}
-    void AssignAt(int distance, const Token& name, ValuePtr value)
-    {
-        EnvironmentPtr env = shared_from_this();
-        for (int i = 0; i < distance; ++i)
-        {
-            env = env->enclosing;
-        }
-        env->values[name.lexeme] = value;
-    }
+	void AssignAt(int distance, const Token& name, ValuePtr value)
+	{
+		EnvironmentPtr env = shared_from_this();
+		for (int i = 0; i < distance; ++i)
+		{
+			env = env->enclosing;
+		}
+		env->values[name.lexeme] = value;
+	}
 };

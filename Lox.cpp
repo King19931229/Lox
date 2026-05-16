@@ -63,19 +63,19 @@ Lox::~Lox()
 
 void Lox::Run(int argc, char* argv[])
 {
-    if (argc > 2) // 修正：argc 包含程序名，所以 > 2 表示多于一个参数
-    {
-        std::cout << FormatString("Argument count error: %d, expected at most 1\n", argc - 1);
-        exit(64);
-    }
-    else if (argc == 2) // 修正：argc == 2 表示有一个文件路径参数
-    {
-        RunFile(argv[1]);
-    }
-    else
-    {
-        RunPrompt();
-    }
+	if (argc > 2) // 修正：argc 包含程序名，所以 > 2 表示多于一个参数
+	{
+		std::cout << FormatString("Argument count error: %d, expected at most 1\n", argc - 1);
+		exit(64);
+	}
+	else if (argc == 2) // 修正：argc == 2 表示有一个文件路径参数
+	{
+		RunFile(argv[1]);
+	}
+	else
+	{
+		RunPrompt();
+	}
 }
 
 void Lox::RunFile(const char* path)

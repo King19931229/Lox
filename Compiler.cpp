@@ -44,7 +44,7 @@ Compiler::~Compiler()
 
 Chunk* Compiler::CurrentChunk()
 {
-	return function.chunk;
+	return function.GetChunk();
 }
 
 void Compiler::Init(FunctionType inType, const std::string& name)
@@ -52,11 +52,11 @@ void Compiler::Init(FunctionType inType, const std::string& name)
 	type = inType;
 	if (inType == TYPE_SCRIPT)
 	{
-		function.value = new Compiler::ScriptFunction();
+		function = VM::Create(new Compiler::ScriptFunction(compilingChunk));
 	}
 	else
 	{
-		function.value = new Compiler::VMFunctionValue(name);
+		function = VM::Create(new Compiler::VMFunctionValue(name, compilingChunk));
 	}
 	locals.clear();
 	scopeDepth = 0;
@@ -640,8 +640,8 @@ VMValue Compiler::EndCompiler()
 	}
 #endif // DEBUG_PRINT_CODE
 
-	// Transfer ownership of the compiled function's value and chunk to a new GC node.
-	VMValue result = *VM::Create(function.value, function.chunk);
+	// The function object is already owned by the VM; return its handle.
+	VMValue result = function;
 	// Clear local references so the destructor doesn't double-free.
 	function.value = nullptr;
 	compilingChunk = nullptr;
@@ -656,11 +656,11 @@ void Compiler::Number(bool /*canAssign*/)
 	const std::string& lexeme = parser.previous.lexeme;
 	if (lexeme.find('.') != std::string::npos)
 	{
-		EmitConstant(*VM::Create(FloatValue::CreateRaw(std::stof(lexeme))));
+		EmitConstant(VM::Create(FloatValue::CreateRaw(std::stof(lexeme))));
 	}
 	else
 	{
-		EmitConstant(*VM::Create(IntValue::CreateRaw(std::stoi(lexeme))));
+		EmitConstant(VM::Create(IntValue::CreateRaw(std::stoi(lexeme))));
 	}
 }
 
@@ -680,7 +680,7 @@ void Compiler::Literal(bool /*canAssign*/)
 void Compiler::String(bool /*canAssign*/)
 {
 	const std::string& lexeme = parser.previous.lexeme;
-	EmitConstant(*VM::Create(StringValue::CreateRaw(lexeme)));
+	EmitConstant(VM::Create(StringValue::CreateRaw(lexeme)));
 }
 
 void Compiler::Grouping(bool /*canAssign*/)
@@ -1054,7 +1054,7 @@ uint32_t Compiler::MakeConstant(VMValue value)
 
 uint32_t Compiler::IdentifierConstant(const Token& name)
 {
-	return MakeConstant(*VM::Create(StringValue::CreateRaw(name.lexeme)));
+	return MakeConstant(VM::Create(StringValue::CreateRaw(name.lexeme)));
 }
 
 void Compiler::DefineVariable(uint32_t global, bool isFinal)
