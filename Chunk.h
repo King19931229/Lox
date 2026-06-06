@@ -137,6 +137,12 @@ struct Chunk
 	int32_t* columns;
 	VMValueArray constants;
 
+	Chunk()
+	{
+		Init();
+	}
+	~Chunk() = default;
+
 	void Init();
 	void Write(uint8_t byte, int32_t line, int32_t column);
 

@@ -52,6 +52,7 @@ protected:
 		{
 			type = TYPE_UPVALUE;
 		}
+		void Mark(VM& vm) override;
 	};
 
 	VMValue* stacks = nullptr;
@@ -93,7 +94,6 @@ protected:
 	void RuntimeErrorImpl(const uint8_t* instructionIp, const char* format, va_list args);
 
 	void MarkRoots();
-	void MarkValue(VMValue value);
 	void MarkCompilerRoots();
 	void PushCompilerRoot(Compiler* compiler);
 	void PopCompilerRoot(Compiler* compiler);
@@ -120,6 +120,7 @@ public:
 	InterpretResult Interpret(VMValue function);
 	InterpretResult Interpret(const char* source);
 
+	void MarkValue(VMValue value);
 	void CollectGarbage();
 
 	void DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity);

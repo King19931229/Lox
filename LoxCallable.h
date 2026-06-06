@@ -10,6 +10,7 @@ struct LoxCallable : public Value
 	// return the number of parameters the function/method takes
 	virtual int Arity() const = 0;
 	virtual ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) = 0;
+	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
 };
 
 struct LoxLambda : public LoxCallable
@@ -90,6 +91,7 @@ struct LoxInstance : public Value
 	LoxInstance(ValuePtr inClass);
 	static ValuePtr Create(ValuePtr klass);
 	operator std::string() const override;
+	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
 	ValuePtr Get(class Interpreter* interpreter, const Token& name, size_t line = 0, size_t column = 0);
 	void Set(const Token& name, ValuePtr value);
 	ValuePtr RootGet(class Interpreter* interpreter, const Token& name, size_t line = 0, size_t column = 0);

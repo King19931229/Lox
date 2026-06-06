@@ -49,6 +49,38 @@ Chunk* Compiler::CurrentChunk()
 	return function.GetChunk();
 }
 
+void Compiler::VMFunctionBase::Mark(VM& vm)
+{
+	if (isMarked)
+	{
+		return;
+	}
+	isMarked = true;
+	Chunk* chunk = GetChunk();
+	if (chunk == nullptr)
+	{
+		return;
+	}
+	for (int32_t i = 0; i < chunk->constants.count; ++i)
+	{
+		vm.MarkValue(chunk->constants.values[i]);
+	}
+}
+
+void Compiler::VMClosureValue::Mark(VM& vm)
+{
+	if (isMarked)
+	{
+		return;
+	}
+	isMarked = true;
+	vm.MarkValue(function);
+	for (const VMValue& upvalue : upvalues)
+	{
+		vm.MarkValue(upvalue);
+	}
+}
+
 void Compiler::Init(FunctionType inType, const std::string& name)
 {
 	type = inType;

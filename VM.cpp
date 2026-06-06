@@ -27,6 +27,19 @@ VMValue clock(int argCount, VMValue* args)
 
 VM* VM::instance = nullptr;
 
+void VM::UpvalueValue::Mark(VM& vm)
+{
+	if (isMarked)
+	{
+		return;
+	}
+	isMarked = true;
+	if (location != nullptr)
+	{
+		vm.MarkValue(*location);
+	}
+}
+
 void VM::PushCompilerRoot(Compiler* compiler)
 {
 	if (compiler == nullptr)
@@ -359,24 +372,8 @@ void VM::FreeValue(Value* object)
 		}
 	}
 
-	Chunk* chunk = nullptr;
-	if (object->type == TYPE_CALLABLE)
-	{
-		Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(object);
-		if (functionValue->GetType() == Compiler::VM_FUNC_SCRIPT ||
-			functionValue->GetType() == Compiler::VM_FUNC_FUNCTION)
-		{
-			chunk = functionValue->GetChunk();
-		}
-	}
-	if (chunk)
-	{
-		chunk->Free();
-		delete chunk;
-	}
-
 #ifdef DEBUG_LOG_GC
-	printf("Freed object %p of type %s\n", (void*)object, ValueTypeToString(object->type));
+	printf("  Freed object %p of type %s\n", (void*)object, ValueTypeToString(object->type));
 #endif
 
 	delete object;
@@ -394,7 +391,7 @@ Value* VM::AllocValue(Value* value)
 	objects = value;
 
 #ifdef DEBUG_LOG_GC
-	printf("Allocated object %p of type %s\n", (void*)value, ValueTypeToString(value->type));
+	printf("  Allocated object %p of type %s\n", (void*)value, ValueTypeToString(value->type));
 #endif
 
 	return value;
@@ -993,7 +990,10 @@ void VM::DefineNative(const std::string& name, Compiler::NativeFn function, int3
 	if (ResolveOrCreateGlobalSlot(VM::Create(StringValue::CreateRaw(name)), slot))
 	{
 		VMValue nativeValue = VM::Create(new Compiler::NativeFunctionValue(name, function, arity));
-		globalSlots[slot] = VM::Create(new Compiler::VMClosureValue(nativeValue, {}));
+		Push(nativeValue);
+		VMValue closure = VM::Create(new Compiler::VMClosureValue(nativeValue, {}));
+		Pop();
+		globalSlots[slot] = closure;
 	}
 	else
 	{
@@ -1034,51 +1034,17 @@ InterpretResult VM::Interpret(const char* source)
 
 void VM::MarkValue(VMValue value)
 {
-	if (value.value == nullptr || value.value->isMarked)
+	if (value.value == nullptr)
 	{
 		return;
 	}
 #ifdef DEBUG_LOG_GC
-	printf("Mark object %p of type %s\n", (void*)value.value, ValueTypeToString(value.value->type));
-#endif
-	value.value->isMarked = true;
-	switch (value.value->type)
+	if (!value.value->isMarked)
 	{
-		case TYPE_CALLABLE:
-		{
-			Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(value.value);
-			if (functionValue->GetType() == Compiler::VM_FUNC_SCRIPT ||
-				functionValue->GetType() == Compiler::VM_FUNC_FUNCTION)
-			{
-				Chunk* chunk = functionValue->GetChunk();
-				for(int32_t i = 0; i < chunk->constants.count; ++i)
-				{
-					MarkValue(chunk->constants.values[i]);
-				}
-			}
-			if (functionValue->GetType() == Compiler::VM_FUNC_CLOSURE)
-			{
-				Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(value.value);
-				MarkValue(closureValue->function);
-				for (const VMValue& upvalue : closureValue->upvalues)
-				{
-					MarkValue(upvalue);
-				}
-			}
-			break;
-		}
-		case TYPE_UPVALUE:
-		{
-			UpvalueValue* upvalue = static_cast<UpvalueValue*>(value.value);
-			if (upvalue->location != nullptr)
-			{
-				MarkValue(*upvalue->location);
-			}
-			break;
-		}
-		default:
-			break;
+		printf("  Mark object %p of type %s\n", (void*)value.value, ValueTypeToString(value.value->type));
 	}
+#endif
+	value.value->Mark(*this);
 }
 
 void VM::MarkRoots()

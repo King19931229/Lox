@@ -32,6 +32,7 @@ public:
 	{
 		virtual int Arity() const = 0;
 		virtual VMFunctionType GetType() const = 0;
+		void Mark(VM& vm) override;
 	};
 
 	// Lightweight placeholder for the top-level script callable.
@@ -43,6 +44,14 @@ public:
 			: chunk(inChunk)
 		{
 			this->type = TYPE_CALLABLE;
+		}
+		~ScriptFunction() override
+		{
+			if (chunk)
+			{
+				chunk->Free();
+				delete chunk;
+			}
 		}
 		int Arity() const override { return 0; }
 		Chunk* GetChunk() const override { return chunk; }
@@ -62,6 +71,14 @@ public:
 			, chunk(inChunk)
 		{
 			this->type = TYPE_CALLABLE;
+		}
+		~VMFunctionValue() override
+		{
+			if (chunk)
+			{
+				chunk->Free();
+				delete chunk;
+			}
 		}
 		int Arity() const override { return arity; }
 		Chunk* GetChunk() const override { return chunk; }
@@ -108,6 +125,7 @@ public:
 		{
 			return function.GetChunk();
 		}
+		void Mark(VM& vm) override;
 		operator std::string() const override
 		{
 			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.value);
