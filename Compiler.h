@@ -32,7 +32,7 @@ public:
 	{
 		virtual int Arity() const = 0;
 		virtual VMFunctionType GetType() const = 0;
-		void Mark(VM& vm) override;
+		void Blacken(VM& vm) override;
 	};
 
 	// Lightweight placeholder for the top-level script callable.
@@ -57,6 +57,7 @@ public:
 		Chunk* GetChunk() const override { return chunk; }
 		operator std::string() const override { return "<script>"; }
 		VMFunctionType GetType() const override { return VM_FUNC_SCRIPT; }
+		size_t Size() const override { return sizeof(*this); }
 	};
 
 	// Placeholder for a named function compiled by the VM compiler.
@@ -84,6 +85,7 @@ public:
 		Chunk* GetChunk() const override { return chunk; }
 		operator std::string() const override { return "<fn " + name + ">"; }
 		VMFunctionType GetType() const override { return VM_FUNC_FUNCTION; }
+		size_t Size() const override { return sizeof(*this) + name.capacity(); }
 	};
 
 	typedef VMValue(*NativeFn)(int argCount, VMValue* args);
@@ -102,6 +104,7 @@ public:
 		int Arity() const override { return arity; }
 		operator std::string() const override { return "<native fn " + name + ">"; }
 		VMFunctionType GetType() const override { return VM_FUNC_NATIVE; }
+		size_t Size() const override { return sizeof(*this) + name.capacity(); }
 	};
 
 	// Placeholder for a closure value, which wraps a function and its upvalues.
@@ -125,13 +128,14 @@ public:
 		{
 			return function.GetChunk();
 		}
-		void Mark(VM& vm) override;
+		void Blacken(VM& vm) override;
 		operator std::string() const override
 		{
 			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.value);
 			return "<closure " + functionValue->operator std::string() + ">";
 		}
 		VMFunctionType GetType() const override { return VM_FUNC_CLOSURE; }
+		size_t Size() const override { return sizeof(*this) + upvalues.capacity() * sizeof(VMValue); }
 	};
 private:
 	enum Precedence

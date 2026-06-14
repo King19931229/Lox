@@ -10,7 +10,6 @@ struct LoxCallable : public Value
 	// return the number of parameters the function/method takes
 	virtual int Arity() const = 0;
 	virtual ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) = 0;
-	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
 };
 
 struct LoxLambda : public LoxCallable
@@ -23,6 +22,7 @@ struct LoxLambda : public LoxCallable
 	int Arity() const override;
 	operator std::string() const override;
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
+	size_t Size() const override { return sizeof(*this); }
 };
 
 struct LoxFunction : public LoxCallable
@@ -38,6 +38,7 @@ struct LoxFunction : public LoxCallable
 	int Arity() const override;
 	operator std::string() const override;
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
+	size_t Size() const override { return sizeof(*this); }
 };
 
 struct LoxNilFunction : public LoxCallable
@@ -48,6 +49,7 @@ struct LoxNilFunction : public LoxCallable
 	int Arity() const override;
 	operator std::string() const override;
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
+	size_t Size() const override { return sizeof(*this); }
 };
 
 struct LoxGetter : public LoxCallable
@@ -61,6 +63,7 @@ struct LoxGetter : public LoxCallable
 	int Arity() const override;
 	operator std::string() const override;
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
+	size_t Size() const override { return sizeof(*this); }
 };
 
 struct LoxClass : public LoxCallable
@@ -81,6 +84,11 @@ struct LoxClass : public LoxCallable
 	ValuePtr Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments) override;
 	ValuePtr Get(const Token& name, size_t line = 0, size_t column = 0);
 	void Set(const Token& name, ValuePtr value);
+	size_t Size() const override
+	{
+		return sizeof(*this)
+			+ name.capacity();
+	}
 };
 
 struct LoxInstance : public Value
@@ -91,8 +99,11 @@ struct LoxInstance : public Value
 	LoxInstance(ValuePtr inClass);
 	static ValuePtr Create(ValuePtr klass);
 	operator std::string() const override;
-	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
 	ValuePtr Get(class Interpreter* interpreter, const Token& name, size_t line = 0, size_t column = 0);
 	void Set(const Token& name, ValuePtr value);
 	ValuePtr RootGet(class Interpreter* interpreter, const Token& name, size_t line = 0, size_t column = 0);
+	size_t Size() const override
+	{
+		return sizeof(*this);
+	}
 };

@@ -29,6 +29,10 @@ Interpreter::Interpreter()
 		{
 			return "<native fn>";
 		}
+		size_t Size() const override
+		{
+			return sizeof(*this);
+		}
 		static ValuePtr Create()
 		{
 			return std::make_shared<Clock>();

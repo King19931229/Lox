@@ -9,8 +9,8 @@
 #include <chrono>
 
 // #define DEBUG_TRACE_EXECUTION
-#define DEBUG_STRESS_GC
-#define DEBUG_LOG_GC
+// #define DEBUG_STRESS_GC
+// #define DEBUG_LOG_GC
 // #define USE_LOCAL_IP
 
 namespace
@@ -27,13 +27,8 @@ VMValue clock(int argCount, VMValue* args)
 
 VM* VM::instance = nullptr;
 
-void VM::UpvalueValue::Mark(VM& vm)
+void VM::UpvalueValue::Blacken(VM& vm)
 {
-	if (isMarked)
-	{
-		return;
-	}
-	isMarked = true;
 	if (location != nullptr)
 	{
 		vm.MarkValue(*location);
@@ -327,6 +322,8 @@ void VM::Init()
 	objects = nullptr;
 	openUpvalues = nullptr;
 	frameCount = 0;
+	bytesAllocated = 0;
+	nextGC = INITIAL_GC_THRESHOLD;
 	ResetStack();
 	DefineNative("clock", clock, 0);
 }
@@ -346,6 +343,23 @@ void VM::Free()
 	{
 		FreeValue(objects);
 	}
+
+	if (stacks != nullptr)
+	{
+		FREE_ARRAY(VMValue, stacks, stackCapacity);
+		stacks = nullptr;
+	}
+	stackTop = nullptr;
+	stackCapacity = 0;
+
+	if (grayStack != nullptr)
+	{
+		FREE_ARRAY(Value*, grayStack, grayStackCapacity);
+		grayStack = nullptr;
+	}
+	grayStackCapacity = 0;
+	grayStackCount = 0;
+	bytesAllocated = 0;
 }
 
 void VM::FreeValue(Value* object)
@@ -372,8 +386,22 @@ void VM::FreeValue(Value* object)
 		}
 	}
 
+	size_t objectSize = object->Size();
+	if (objectSize <= bytesAllocated)
+	{
+		bytesAllocated -= objectSize;
+	}
+	else
+	{
+		bytesAllocated = 0;
+	}
+
 #ifdef DEBUG_LOG_GC
-	printf("  Freed object %p of type %s\n", (void*)object, ValueTypeToString(object->type));
+	printf("  Freed object %p of type %s (%zu bytes, %zu remaining)\n",
+		(void*)object,
+		ValueTypeToString(object->type),
+		objectSize,
+		bytesAllocated);
 #endif
 
 	delete object;
@@ -381,17 +409,28 @@ void VM::FreeValue(Value* object)
 
 Value* VM::AllocValue(Value* value)
 {
+	if (!value) return nullptr;
+	size_t objectSize = value->Size();
+
 #ifdef DEBUG_STRESS_GC
 	CollectGarbage();
 #endif
+	if (bytesAllocated + objectSize > nextGC)
+	{
+		CollectGarbage();
+	}
 
-	if (!value) return nullptr;
 	value->nextGCValue = objects;
-	value->isMarked = false;
+	value->markedValue = !currentMarkValue;
 	objects = value;
+	bytesAllocated += objectSize;
 
 #ifdef DEBUG_LOG_GC
-	printf("  Allocated object %p of type %s\n", (void*)value, ValueTypeToString(value->type));
+	printf("  Allocated object %p of type %s (%zu bytes, %zu total)\n",
+		(void*)value,
+		ValueTypeToString(value->type),
+		objectSize,
+		bytesAllocated);
 #endif
 
 	return value;
@@ -1034,17 +1073,52 @@ InterpretResult VM::Interpret(const char* source)
 
 void VM::MarkValue(VMValue value)
 {
-	if (value.value == nullptr)
+	if (value.value == nullptr || value.value->markedValue == currentMarkValue)
 	{
 		return;
 	}
 #ifdef DEBUG_LOG_GC
-	if (!value.value->isMarked)
-	{
-		printf("  Mark object %p of type %s\n", (void*)value.value, ValueTypeToString(value.value->type));
-	}
+	printf("  Mark object %p of type %s\n", (void*)value.value, ValueTypeToString(value.value->type));
 #endif
-	value.value->Mark(*this);
+	value.value->markedValue = currentMarkValue;
+	if (grayStackCount + 1 > grayStackCapacity)
+	{
+		size_t oldCapacity = grayStackCapacity;
+		size_t newCapacity = oldCapacity == 0 ? 8 : oldCapacity * 2;
+		grayStack = GROW_ARRAY(Value*, grayStack, oldCapacity, newCapacity);
+		grayStackCapacity = newCapacity;
+	}
+	grayStack[grayStackCount++] = value.value;
+}
+
+void VM::TraceReferences()
+{
+	while (grayStackCount > 0)
+	{
+		Value* value = grayStack[--grayStackCount];
+#ifdef DEBUG_LOG_GC
+		printf("  Blacken object %p of type %s\n", (void*)value, ValueTypeToString(value->type));
+#endif
+		value->Blacken(*this);
+	}
+}
+
+void VM::Sweep()
+{
+	for (Value* object = objects; object != nullptr; )
+	{
+		if (object->markedValue != currentMarkValue)
+		{
+			Value* unreached = object;
+			object = object->nextGCValue;
+			FreeValue(unreached);
+		}
+		else
+		{
+			object = object->nextGCValue;
+		}
+	}
+	currentMarkValue = !currentMarkValue;
 }
 
 void VM::MarkRoots()
@@ -1086,22 +1160,15 @@ void VM::CollectGarbage()
 	printf("GC Begin\n");
 #endif
 	MarkRoots();
-	for (Value* object = objects; object != nullptr; )
+	TraceReferences();
+	Sweep();
+	nextGC = bytesAllocated * GC_HEAP_GROW_FACTOR;
+	if (nextGC < INITIAL_GC_THRESHOLD)
 	{
-		if (!object->isMarked)
-		{
-			Value* unreached = object;
-			object = object->nextGCValue;
-			FreeValue(unreached);
-		}
-		else
-		{
-			object->isMarked = false;
-			object = object->nextGCValue;
-		}
+		nextGC = INITIAL_GC_THRESHOLD;
 	}
 #ifdef DEBUG_LOG_GC
-	printf("GC End\n");
+	printf("GC End (%zu bytes allocated, next at %zu)\n", bytesAllocated, nextGC);
 #endif
 }
 

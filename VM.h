@@ -41,6 +41,8 @@ protected:
 
 	static constexpr uint32_t FRAMES_MAX = 64;
 	static constexpr uint32_t STACK_MAX = FRAMES_MAX * 255;
+	static constexpr size_t INITIAL_GC_THRESHOLD = 1024 * 1024;
+	static constexpr size_t GC_HEAP_GROW_FACTOR = 2;
 
 	struct UpvalueValue : public Value
 	{
@@ -52,13 +54,23 @@ protected:
 		{
 			type = TYPE_UPVALUE;
 		}
-		void Mark(VM& vm) override;
+		void Blacken(VM& vm) override;
+		size_t Size() const override { return sizeof(*this); }
 	};
 
 	VMValue* stacks = nullptr;
-	size_t stackCapacity = 255;
+	size_t stackCapacity = 0;
 	VMValue* stackTop = nullptr;
 	UpvalueValue* openUpvalues = nullptr;
+
+	Value** grayStack = nullptr;
+	size_t grayStackCount = 0;
+	size_t grayStackCapacity = 0;
+
+	size_t bytesAllocated = 0;
+	size_t nextGC = INITIAL_GC_THRESHOLD;
+
+	bool currentMarkValue = true;
 
 	std::unordered_map<std::string, size_t> globalNameToSlot;
 	std::vector<VMValue> globalSlots;
@@ -121,6 +133,8 @@ public:
 	InterpretResult Interpret(const char* source);
 
 	void MarkValue(VMValue value);
+	void TraceReferences();
+	void Sweep();
 	void CollectGarbage();
 
 	void DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity);

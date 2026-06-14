@@ -29,7 +29,7 @@ typedef std::shared_ptr<Value> ValuePtr;
 struct Value : public std::enable_shared_from_this<Value>
 {
 	ValueType type;
-	bool isMarked = false;
+	bool markedValue = false;
 	Value* nextGCValue = nullptr;
 	virtual ~Value() = default;
 
@@ -47,7 +47,8 @@ struct Value : public std::enable_shared_from_this<Value>
 	virtual operator bool() const { Lox::GetInstance().RuntimeError("Invalid conversion to bool."); return false; }
 	virtual operator std::string() const { Lox::GetInstance().RuntimeError("Invalid conversion to string."); return ""; }
 	virtual Chunk* GetChunk() const { return nullptr; }
-	virtual void Mark(VM& vm) = 0;
+	virtual void Blacken(VM& vm) { (void)vm; }
+	virtual size_t Size() const = 0;
 };
 
 // --- Concrete Value types ---
@@ -69,7 +70,7 @@ struct ErrorValue : public Value
 
 	operator bool() const override { return false; } // Error values are falsey
 	operator std::string() const override { return message; }
-	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
+	size_t Size() const override { return sizeof(*this) + message.capacity(); }
 };
 
 struct IntValue : public Value
@@ -91,7 +92,7 @@ struct IntValue : public Value
 	operator float() const override { return static_cast<float>(value); }
 	operator bool() const override { return value != 0; }
 	operator std::string() const override { return std::to_string(value); }
-	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
+	size_t Size() const override { return sizeof(*this); }
 };
 
 struct FloatValue : public Value
@@ -113,7 +114,7 @@ struct FloatValue : public Value
 	operator float() const override { return value; }
 	operator bool() const override { return value != 0.0f; }
 	operator std::string() const override { return std::to_string(value); }
-	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
+	size_t Size() const override { return sizeof(*this); }
 };
 
 struct StringValue : public Value
@@ -135,7 +136,7 @@ struct StringValue : public Value
 
 	operator bool() const override { return !value.empty(); }
 	operator std::string() const override { return value; }
-	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
+	size_t Size() const override { return sizeof(*this) + value.capacity(); }
 };
 
 struct BoolValue : public Value
@@ -155,7 +156,7 @@ struct BoolValue : public Value
 
 	operator bool() const override { return value; }
 	operator std::string() const override { return value ? "true" : "false"; }
-	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
+	size_t Size() const override { return sizeof(*this); }
 };
 
 struct NilValue : public Value
@@ -172,7 +173,7 @@ struct NilValue : public Value
 
 	operator bool() const override { return false; }
 	operator std::string() const override { return "nil"; }
-	void Mark(VM& vm) override { (void)vm; if (isMarked) return; isMarked = true; }
+	size_t Size() const override { return sizeof(*this); }
 };
 
 // --- Raw Value* helper functions (C++ forbids operator overloads on pure pointer types) ---

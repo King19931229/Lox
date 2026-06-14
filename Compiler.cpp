@@ -49,13 +49,8 @@ Chunk* Compiler::CurrentChunk()
 	return function.GetChunk();
 }
 
-void Compiler::VMFunctionBase::Mark(VM& vm)
+void Compiler::VMFunctionBase::Blacken(VM& vm)
 {
-	if (isMarked)
-	{
-		return;
-	}
-	isMarked = true;
 	Chunk* chunk = GetChunk();
 	if (chunk == nullptr)
 	{
@@ -67,13 +62,8 @@ void Compiler::VMFunctionBase::Mark(VM& vm)
 	}
 }
 
-void Compiler::VMClosureValue::Mark(VM& vm)
+void Compiler::VMClosureValue::Blacken(VM& vm)
 {
-	if (isMarked)
-	{
-		return;
-	}
-	isMarked = true;
 	vm.MarkValue(function);
 	for (const VMValue& upvalue : upvalues)
 	{
