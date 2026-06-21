@@ -24,6 +24,7 @@ public:
 		VM_FUNC_SCRIPT,
 		VM_FUNC_FUNCTION,
 		VM_FUNC_NATIVE,
+		VM_FUNC_CLASS,
 		VM_FUNC_CLOSURE
 	};
 	
@@ -137,6 +138,49 @@ public:
 		VMFunctionType GetType() const override { return VM_FUNC_CLOSURE; }
 		size_t Size() const override { return sizeof(*this) + upvalues.capacity() * sizeof(VMValue); }
 	};
+
+	struct VMClassValue : public Value
+	{
+		std::string name;
+		VMValue superClass;
+		explicit VMClassValue(const std::string& inName, VMValue inSuperClass = VMValue())
+			: name(inName)
+			, superClass(inSuperClass)
+		{
+			this->type = TYPE_CLASS;
+		}
+		virtual operator std::string() const override { return "<class " + name + ">"; }
+		virtual size_t Size() const override  { return sizeof(*this) + name.capacity(); }
+	};
+
+	struct VMInstanceValue : public VMFunctionBase
+	{
+		VMValue classValue;
+		std::unordered_map<std::string, VMValue> fields;
+		explicit VMInstanceValue(VMValue inClass)
+			: classValue(inClass)
+		{
+			this->type = TYPE_INSTANCE;
+		}
+		virtual operator std::string() const override
+		{
+			VMClassValue* classObj = static_cast<VMClassValue*>(classValue.value);
+			return "<instance of " + classObj->name + ">";
+		}
+		virtual size_t Size() const override
+		{
+			size_t size = sizeof(*this);
+			for (auto& pair : fields)
+			{
+				size += pair.first.capacity() + pair.second.value->Size();
+			}
+			return size;
+		}
+		void Blacken(VM& vm) override;
+
+		virtual int Arity() const override { return 0; }
+		virtual VMFunctionType GetType() const override { return VM_FUNC_CLASS; }
+	};
 private:
 	enum Precedence
 	{
@@ -155,7 +199,7 @@ private:
 	};
 
 	typedef void (Compiler::* PrefixParseFn)(bool);
-	typedef void (Compiler::* InfixParseFn)();
+	typedef void (Compiler::* InfixParseFn)(bool);
 
 	struct ParseRule
 	{
@@ -238,6 +282,7 @@ private:
 	void VarDeclaration(bool isFinal);
 	void FinalVarDeclaration();
 	void FunctionDeclaration();
+	void ClassDeclaration();
 	void Function(FunctionType type, const std::string& name = "");
 	void PrintStatement();
 	void ExpressionStatement();
@@ -262,13 +307,14 @@ private:
 	void String(bool canAssign);
 	void Grouping(bool canAssign);
 	void Unary(bool canAssign);
-	void Binary();
-	void Trinary();
-	void Equality();
-	void And();
-	void Or();
-	void NamedVariable(bool canAssign);
-	void Call();
+	void Binary(bool);
+	void Trinary(bool);
+	void Equality(bool);
+	void And(bool);
+	void Or(bool);
+	void NamedVariable(bool);
+	void Call(bool);
+	void Dot(bool canAssign);
 
 	// --- Token Helpers ---
 	Token ScanToken();

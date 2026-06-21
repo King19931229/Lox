@@ -271,6 +271,16 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 			return ByteInstruction("OP_SET_UPVALUE", offset);
 		case OP_CLOSE_UPVALUE:
 			return SimpleInstruction("OP_CLOSE_UPVALUE", offset);
+		case OP_CLASS:
+			return ConstantInstruction("OP_CLASS", offset);
+		case OP_SET_PROPERTY:
+			return ConstantInstruction("OP_SET_PROPERTY", offset);
+		case OP_GET_PROPERTY:
+			return ConstantInstruction("OP_GET_PROPERTY", offset);
+		case OP_SET_PROPERTY_LONG:
+			return ConstantLongInstruction("OP_SET_PROPERTY_LONG", offset);
+		case OP_GET_PROPERTY_LONG:
+			return ConstantLongInstruction("OP_GET_PROPERTY_LONG", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;

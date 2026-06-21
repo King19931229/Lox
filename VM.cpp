@@ -937,6 +937,66 @@ InterpretResult VM::Run()
 				Pop();
 				break;
 			}
+			case OP_CLASS:
+			{
+				VMValue nameValue = READ_CONSTANT();
+				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				{
+					RuntimeError(IP, "Class name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue classValue = VM::Create(new Compiler::VMClassValue(static_cast<StringValue*>(nameValue.value)->value));
+				Push(classValue);
+				break;
+			}
+			case OP_GET_PROPERTY:
+			case OP_GET_PROPERTY_LONG:
+			{
+				VMValue nameValue = (opCode == OP_GET_PROPERTY) ? READ_CONSTANT() : READ_LONG_CONSTANT();
+				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				{
+					RuntimeError(IP, "Property name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue object = Pop();
+				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				{
+					RuntimeError(IP, "Only instances have properties.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				auto it = instance->fields.find(propertyName);
+				if (it == instance->fields.end())
+				{
+					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Push(it->second);
+				break;
+			}
+			case OP_SET_PROPERTY:
+			case OP_SET_PROPERTY_LONG:
+			{
+				VMValue nameValue = (opCode == OP_SET_PROPERTY) ? READ_CONSTANT() : READ_LONG_CONSTANT();
+				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				{
+					RuntimeError(IP, "Property name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue valueToSet = Pop();
+				VMValue object = Pop();
+				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				{
+					RuntimeError(IP, "Only instances have properties.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				instance->fields[propertyName] = valueToSet;
+				Push(valueToSet);
+				break;
+			}
 		}
 	}
 
@@ -959,7 +1019,15 @@ InterpretResult VM::Interpret(VMValue function)
 
 bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 {
-	if (!callee.value || callee.value->type != TYPE_CALLABLE)
+	if (callee.value->type == TYPE_CLASS)
+	{
+		VMValue instance = VM::Create(new Compiler::VMInstanceValue(static_cast<Compiler::VMClassValue*>(callee.value)));
+		// Replace the callee on the stack with the new instance
+		stackTop[-argCount - 1] = instance;
+		return true;
+	}
+
+	if (callee.value->type != TYPE_CALLABLE)
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;

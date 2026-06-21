@@ -268,26 +268,29 @@ void TestChunk()
 
 int main(int argc, char* argv[])
 {
-#if 0
+#if 1
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
-	fun test() {
-		var x = 0;
-		fun getX() {
-		return x;
-		}
-		return getX;
+	class Foo 
+	{
 	}
-	var x = test()();
-	x = x + 1;
-	print x;
-	print test()();
+	print Foo;
+	var foo = Foo();
+	foo.fuck = 123;
+	print foo.fuck;
+	{
+		class Bar {}
+		print Bar;
+		var bar = Bar();
+		bar.shit = 456;
+		print bar.shit;
+	}
 	)");
 	vm.Free();
 #endif
 
-#if 1
+#if 0
 	TestUnit::RunVMTest();
 #endif
 

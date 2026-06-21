@@ -71,6 +71,15 @@ void Compiler::VMClosureValue::Blacken(VM& vm)
 	}
 }
 
+void Compiler::VMInstanceValue::Blacken(VM& vm)
+{
+	vm.MarkValue(classValue);
+	for (const auto& pair : fields)
+	{
+		vm.MarkValue(pair.second);
+	}
+}
+
 void Compiler::Init(FunctionType inType, const std::string& name)
 {
 	type = inType;
@@ -148,6 +157,10 @@ void Compiler::Delclaration()
 	else if (Match(FUN))
 	{
 		FunctionDeclaration();
+	}
+	else if (Match(CLASS))
+	{
+		ClassDeclaration();
 	}
 	else
 	{
@@ -337,6 +350,18 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 	{
 		EmitByte(0);
 	}
+}
+
+void Compiler::ClassDeclaration()
+{
+	Consume(IDENTIFIER, "Expect class name.");
+	uint32_t nameConstant = IdentifierConstant(parser.previous);
+	DeclareVariable(false);
+	// Push the class on the stack
+	EmitBytes(OP_CLASS, nameConstant);
+	DefineVariable(nameConstant, false);
+	Consume(LEFT_BRACE, "Expect '{' before class body.");
+	Consume(RIGHT_BRACE, "Expect '}' after class body.");
 }
 
 void Compiler::IfStatement()
@@ -612,9 +637,12 @@ void Compiler::ParsePrecedence(Precedence precedence)
 		Advance();
 		auto infixFunc = GetRule(parser.previous.type)->infix;
 		// Call the infix parse function as a member function pointer.
-		(this->*infixFunc)();
+		(this->*infixFunc)(canAssign);
 	}
 
+	// If we have a valid assignment target and see an '=' at this point, it means the
+	// assignment operator is being used incorrectly (e.g. `a + b = c`), so we can give a more
+	// helpful error message than "Expect expression."
 	if (canAssign && Match(EQUAL))
 	{
 		Error("Invalid assignment target.");
@@ -737,7 +765,7 @@ void Compiler::Unary(bool /*canAssign*/)
 	}
 }
 
-void Compiler::Binary()
+void Compiler::Binary(bool)
 {
 	TokenType operatorType = parser.previous.type;
 
@@ -760,7 +788,7 @@ void Compiler::Binary()
 	}
 }
 
-void Compiler::Trinary()
+void Compiler::Trinary(bool)
 {
 	TokenType operatorType = parser.previous.type;
 
@@ -779,7 +807,7 @@ void Compiler::Trinary()
 	ParsePrecedence((Precedence)(rule->precedence));
 }
 
-void Compiler::Equality()
+void Compiler::Equality(bool)
 {
 	TokenType operatorType = parser.previous.type;
 	ParseRule* rule = GetRule(operatorType);
@@ -794,7 +822,7 @@ void Compiler::Equality()
 	}
 }
 
-void Compiler::And()
+void Compiler::And(bool)
 {
 	// Short-circuit: if the left side is false, skip the right side.
 	int32_t andJump = EmitJump(OP_JUMP_IF_FALSE);
@@ -804,7 +832,7 @@ void Compiler::And()
 	PatchJump(andJump);
 }
 
-void Compiler::Or()
+void Compiler::Or(bool)
 {
 	/*
 	EmitByte(OP_NOT);
@@ -919,10 +947,45 @@ uint8_t Compiler::ArgumentList()
 	return argCount;
 }
 
-void Compiler::Call()
+void Compiler::Call(bool)
 {
 	uint8_t argCount = ArgumentList();
 	EmitBytes(OP_CALL, argCount);
+}
+
+void Compiler::Dot(bool canAssign)
+{
+	Consume(IDENTIFIER, "Expect property name after '.'.");
+	uint32_t nameConstant = IdentifierConstant(parser.previous);
+	if (canAssign && Match(TokenType::EQUAL))
+	{
+		Expression();
+		if (nameConstant <= 0xFF)
+		{
+			EmitBytes(OP_SET_PROPERTY, nameConstant);
+		}
+		else
+		{
+			EmitBytes(OP_SET_PROPERTY_LONG,
+				(uint8_t)((nameConstant >> 16) & 0xFF),
+				(uint8_t)((nameConstant >> 8) & 0xFF),
+				(uint8_t)(nameConstant & 0xFF));
+		}
+	}
+	else
+	{
+		if (nameConstant <= 0xFF)
+		{
+			EmitBytes(OP_GET_PROPERTY, nameConstant);
+		}
+		else
+		{
+			EmitBytes(OP_GET_PROPERTY_LONG,
+				(uint8_t)((nameConstant >> 16) & 0xFF),
+				(uint8_t)((nameConstant >> 8) & 0xFF),
+				(uint8_t)(nameConstant & 0xFF));
+		}
+	}
 }
 
 // --- Token Helpers ---
@@ -983,7 +1046,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[LEFT_BRACE]    = { nullptr,             nullptr,            PREC_NONE };
 		rules[RIGHT_BRACE]   = { nullptr,             nullptr,            PREC_NONE };
 		rules[COMMA]         = { nullptr,             nullptr,            PREC_NONE };
-		rules[DOT]           = { nullptr,             nullptr,            PREC_NONE };
+		rules[DOT]           = { nullptr,             &Compiler::Dot,     PREC_CALL };
 		rules[DOTDOT]        = { nullptr,             nullptr,            PREC_NONE };
 		rules[MINUS]         = { &Compiler::Unary,    &Compiler::Binary,  PREC_TERM };
 		rules[PLUS]          = { nullptr,             &Compiler::Binary,  PREC_TERM };
