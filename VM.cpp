@@ -997,6 +997,52 @@ InterpretResult VM::Run()
 				Push(valueToSet);
 				break;
 			}
+			case OP_GET_INDEX:
+			{
+				VMValue nameValue = Pop();
+				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				{
+					RuntimeError(IP, "Property name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue object = Pop();
+				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				{
+					RuntimeError(IP, "Only instances can be indexed.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				auto it = instance->fields.find(propertyName);
+				if (it == instance->fields.end())
+				{
+					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Push(it->second);
+				break;
+			}
+			case OP_SET_INDEX:
+			{
+				VMValue valueToSet = Pop();
+				VMValue nameValue = Pop();
+				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				{
+					RuntimeError(IP, "Property name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue object = Pop();
+				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				{
+					RuntimeError(IP, "Only instances have properties.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				instance->fields[propertyName] = valueToSet;
+				Push(valueToSet);
+				break;
+			}
 		}
 	}
 

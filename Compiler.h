@@ -172,7 +172,7 @@ public:
 			size_t size = sizeof(*this);
 			for (auto& pair : fields)
 			{
-				size += pair.first.capacity() + pair.second.value->Size();
+				size += pair.first.capacity() + sizeof(VMValue);
 			}
 			return size;
 		}
@@ -315,6 +315,7 @@ private:
 	void NamedVariable(bool);
 	void Call(bool);
 	void Dot(bool canAssign);
+	void Bracket(bool canAssign);
 
 	// --- Token Helpers ---
 	Token ScanToken();

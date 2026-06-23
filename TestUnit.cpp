@@ -757,6 +757,25 @@ void TestUnit::RunVMTest()
 		{ "var inc; var get; { var n = 5; fun i() { n = n + 1; } fun g() { return n; } inc = i; get = g; } inc(); inc(); print get();", "7\n" },
 		// 函数内部作用域关闭后外层可继续读（upvalue 穿越多帧）
 		{ "var result; fun outer() { var x = 42; { fun capture() { return x; } result = capture; } } outer(); print result();", "42\n" },
+
+		// ===== property (OP_GET/SET_PROPERTY) =====
+		{ "class Box { } var b = Box(); b.x = 42; print b.x;", "42\n" },
+		{ "class Box { } var b = Box(); b.name = \"Lox\"; print b.name;", "Lox\n" },
+		{ "class Box { } var b = Box(); b.n = 1; b.n = b.n + 9; print b.n;", "10\n" },
+		{ "class Point { } var p = Point(); p.x = 3; p.y = 4; print p.x; print p.y;", "3\n4\n" },
+		{ "class Box { } var b = Box(); b.key = 99; print b[\"key\"];", "99\n" },
+		{ "class Box { } var b = Box(); b[\"key\"] = 88; print b.key;", "88\n" },
+		{ "class Box { } var b = Box(); print b.missing;", "Undefined property 'missing'.", INTERPRET_RUNTIME_ERROR },
+		{ "var n = 1; n.x = 2;", "Only instances have properties.", INTERPRET_RUNTIME_ERROR },
+
+		// ===== index (OP_GET/SET_INDEX) =====
+		{ "class Box { } var b = Box(); b[\"val\"] = 7; print b[\"val\"];", "7\n" },
+		{ "class Box { } var b = Box(); var k = \"val\"; b[k] = 7; print b[\"val\"];", "7\n" },
+		{ "class Box { } var b = Box(); b[\"a\" + \"b\"] = 5; print b.ab;", "5\n" },
+		{ "class Box { } var b = Box(); b[\"x\"] = 1; b[\"x\"] = b[\"x\"] + 4; print b[\"x\"];", "5\n" },
+		{ "class Box { } var b = Box(); print b[123];", "Property name must be a string.", INTERPRET_RUNTIME_ERROR },
+		{ "var n = 1; print n[\"x\"];", "Only instances can be indexed.", INTERPRET_RUNTIME_ERROR },
+		{ "class Box { } var b = Box(); print b[\"missing\"];", "Undefined property 'missing'.", INTERPRET_RUNTIME_ERROR },
 	};
 
 #ifdef _WIN32

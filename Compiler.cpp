@@ -988,6 +988,21 @@ void Compiler::Dot(bool canAssign)
 	}
 }
 
+void Compiler::Bracket(bool canAssign)
+{
+	Expression();
+	Consume(RIGHT_BRACKET, "Expect ']' after index.");
+	if (canAssign && Match(EQUAL))
+	{
+		Expression();
+		EmitByte(OP_SET_INDEX);
+	}
+	else
+	{
+		EmitByte(OP_GET_INDEX);
+	}
+}
+
 // --- Token Helpers ---
 
 Token Compiler::ScanToken()
@@ -1045,6 +1060,8 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[RIGHT_PAREN]   = { nullptr,             nullptr,            PREC_NONE };
 		rules[LEFT_BRACE]    = { nullptr,             nullptr,            PREC_NONE };
 		rules[RIGHT_BRACE]   = { nullptr,             nullptr,            PREC_NONE };
+		rules[LEFT_BRACKET]  = { nullptr,             &Compiler::Bracket, PREC_CALL };
+		rules[RIGHT_BRACKET] = { nullptr,             nullptr,            PREC_NONE };
 		rules[COMMA]         = { nullptr,             nullptr,            PREC_NONE };
 		rules[DOT]           = { nullptr,             &Compiler::Dot,     PREC_CALL };
 		rules[DOTDOT]        = { nullptr,             nullptr,            PREC_NONE };

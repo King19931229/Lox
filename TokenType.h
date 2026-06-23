@@ -12,6 +12,8 @@
 	TOKEN(RIGHT_PAREN,    ")")      /* ) */ \
 	TOKEN(LEFT_BRACE,     "{")      /* { */ \
 	TOKEN(RIGHT_BRACE,    "}")      /* } */ \
+	TOKEN(LEFT_BRACKET,   "[")      /* [ */ \
+	TOKEN(RIGHT_BRACKET,  "]")      /* ] */ \
 	TOKEN(COMMA,          ",")      /* , */ \
 	TOKEN(DOT,            ".")      /* . */ \
 	TOKEN(DOTDOT,         "..")     /* .. */ \
