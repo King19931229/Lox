@@ -991,11 +991,7 @@ InterpretResult VM::Run()
 
 				InlineCache& cache = chunk->GetInlineCache(cacheIndex);
 				uint32_t slot;
-				if (cache.Match(klass))
-				{
-					slot = cache.slot;
-				}
-				else
+				if (!cache.Match(klass, slot))
 				{
 					slot = klass->GetSlot(propertyName);
 					if (slot != InlineCache::INVALID_SLOT)
@@ -1055,16 +1051,11 @@ InterpretResult VM::Run()
 
 				InlineCache& cache = chunk->GetInlineCache(cacheIndex);
 				uint32_t slot;
-				if (cache.Match(klass))
-				{
-					slot = cache.slot;
-				}
-				else
+				if (!cache.Match(klass, slot))
 				{
 					slot = klass->GetOrCreateSlot(propertyName);
 					cache.Update(klass, slot);
 				}
-
 				instance->SetField(slot, valueToSet);
 				Push(valueToSet);
 				break;

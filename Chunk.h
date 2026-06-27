@@ -138,25 +138,49 @@ struct VMValueArray
 struct InlineCache
 {
 	static constexpr uint32_t INVALID_SLOT = UINT32_MAX;
+	static constexpr uint32_t ENTRY_COUNT = 4;
 
-	void* klass;
-	uint32_t slot;
+	struct Entry
+	{
+		void* klass;
+		uint32_t slot;
+	} enries[ENTRY_COUNT];
+
+	uint32_t writeLocation;
 
 	InlineCache()
-		: klass(nullptr)
-		, slot(INVALID_SLOT)
+		: writeLocation(0)
 	{
+		for (uint32_t i = 0; i < ENTRY_COUNT; ++i)
+		{
+			enries[i].klass = nullptr;
+			enries[i].slot = INVALID_SLOT;
+		}
 	}
 
-	bool Match(void* inKlass) const
+	bool Match(void* inKlass, uint32_t& outSlot) const
 	{
-		return inKlass && klass == inKlass;
+		if (!inKlass)
+		{
+			return false;
+		}
+		for (uint32_t i = 0; i < ENTRY_COUNT; ++i)
+		{
+			uint32_t index = (ENTRY_COUNT + writeLocation - 1 - i) % ENTRY_COUNT;
+			if (enries[index].klass == inKlass)
+			{
+				outSlot = enries[index].slot;
+				return true;
+			}
+		}
+		return false;
 	}
 
 	void Update(void* inKlass, uint32_t inSlot)
 	{
-		klass = inKlass;
-		slot = inSlot;
+		enries[writeLocation].klass = inKlass;
+		enries[writeLocation].slot = inSlot;
+		writeLocation = (writeLocation + 1) % ENTRY_COUNT;
 	}
 };
 

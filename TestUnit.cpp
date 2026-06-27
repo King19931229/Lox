@@ -625,6 +625,17 @@ void TestUnit::RunVMTest()
 		InterpretResult expectedResult = INTERPRET_OK;
 	};
 
+	auto MakeLongPropertyAccessSource = []()
+	{
+		std::string source = "class Box { } var b = Box(); ";
+		for (int i = 0; i < 260; ++i)
+		{
+			source += "b.p" + std::to_string(i) + " = " + std::to_string(i) + "; ";
+		}
+		source += "b.longSet = 123; print b.longSet;";
+		return source;
+	};
+
 	const std::vector<TestCase> testCases = {
 		// 基础常量与打印
 		{ "print 1;", "1\n" },
@@ -762,9 +773,15 @@ void TestUnit::RunVMTest()
 		{ "class Box { } var b = Box(); b.x = 42; print b.x;", "42\n" },
 		{ "class Box { } var b = Box(); b.name = \"Lox\"; print b.name;", "Lox\n" },
 		{ "class Box { } var b = Box(); b.n = 1; b.n = b.n + 9; print b.n;", "10\n" },
+		{ "class Box { } var b = Box(); b.flag = true; b.flag = false; print b.flag;", "false\n" },
+		{ "class Box { } var b = Box(); b.empty = nil; print b.empty;", "nil\n" },
 		{ "class Point { } var p = Point(); p.x = 3; p.y = 4; print p.x; print p.y;", "3\n4\n" },
+		{ "class Counter { } fun inc(obj) { obj.n = obj.n + 1; } var c = Counter(); c.n = 0; inc(c); inc(c); print c.n;", "2\n" },
+		{ "class Box { } var outer = Box(); outer.inner = Box(); outer.inner.value = 123; print outer.inner.value;", "123\n" },
 		{ "class Box { } var b = Box(); b.key = 99; print b[\"key\"];", "99\n" },
 		{ "class Box { } var b = Box(); b[\"key\"] = 88; print b.key;", "88\n" },
+		{ "class Box { } fun setX(obj, value) { obj.x = value; } var b = Box(); setX(b, 41); setX(b, 42); print b.x;", "42\n" },
+		{ MakeLongPropertyAccessSource(), "123\n" },
 		{ "class Box { } var b = Box(); print b.missing;", "Undefined property 'missing'.", INTERPRET_RUNTIME_ERROR },
 		{ "var n = 1; n.x = 2;", "Only instances have properties.", INTERPRET_RUNTIME_ERROR },
 
@@ -774,8 +791,14 @@ void TestUnit::RunVMTest()
 		{ "class Box { } var b = Box(); b[\"a\" + \"b\"] = 5; print b.ab;", "5\n" },
 		{ "class Box { } var b = Box(); b[\"x\"] = 1; b[\"x\"] = b[\"x\"] + 4; print b[\"x\"];", "5\n" },
 		{ "class A { } class B { } fun readX(obj) { print obj.x; } var a = A(); var b = B(); a.x = 1; b.x = 2; readX(a); readX(b); readX(a);", "1\n2\n1\n" },
+		{ "class A { } class B { } class C { } class D { } class E { } fun readX(obj) { print obj.x; } var a = A(); var b = B(); var c = C(); var d = D(); var e = E(); a.x = 1; b.x = 2; c.x = 3; d.x = 4; e.x = 5; readX(a); readX(b); readX(c); readX(d); readX(e); readX(a);", "1\n2\n3\n4\n5\n1\n" },
+		{ "class A { } class B { } class C { } class D { } class E { } fun setX(obj, value) { obj.x = value; } var a = A(); var b = B(); var c = C(); var d = D(); var e = E(); setX(a, 1); setX(b, 2); setX(c, 3); setX(d, 4); setX(e, 5); print a.x; print b.x; print c.x; print d.x; print e.x;", "1\n2\n3\n4\n5\n" },
+		{ "class Box { } fun readX(obj) { print obj.x; } fun readY(obj) { print obj.y; } var b = Box(); b.x = 10; b.y = 20; readX(b); readY(b); readX(b); readY(b);", "10\n20\n10\n20\n" },
+		{ "class Box { } var b = Box(); var key = \"x\"; b[key] = 7; print b.x; b.x = 9; print b[key];", "7\n9\n" },
 		{ "class Box { } var b = Box(); print b[123];", "Property name must be a string.", INTERPRET_RUNTIME_ERROR },
+		{ "class Box { } var b = Box(); b[123] = 1;", "Property name must be a string.", INTERPRET_RUNTIME_ERROR },
 		{ "var n = 1; print n[\"x\"];", "Only instances can be indexed.", INTERPRET_RUNTIME_ERROR },
+		{ "var n = 1; n[\"x\"] = 2;", "Only instances have properties.", INTERPRET_RUNTIME_ERROR },
 		{ "class Box { } var b = Box(); print b[\"missing\"];", "Undefined property 'missing'.", INTERPRET_RUNTIME_ERROR },
 		{ "class Box { } var b = Box(); b[\"x\"] = 1; print b[\"missing\"];", "Undefined property 'missing'.", INTERPRET_RUNTIME_ERROR },
 	};
