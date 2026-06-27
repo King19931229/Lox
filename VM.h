@@ -107,6 +107,7 @@ protected:
 
 	void MarkRoots();
 	void MarkCompilerRoots();
+	void InvalidateInlineCaches();
 	void PushCompilerRoot(Compiler* compiler);
 	void PopCompilerRoot(Compiler* compiler);
 public:

@@ -142,21 +142,26 @@ public:
 	struct VMClassValue : public Value
 	{
 		std::string name;
+		std::unordered_map<std::string, uint32_t> fieldToSlot;
+		uint32_t slotNum;
 		VMValue superClass;
 		explicit VMClassValue(const std::string& inName, VMValue inSuperClass = VMValue())
 			: name(inName)
+			, slotNum(0)
 			, superClass(inSuperClass)
 		{
 			this->type = TYPE_CLASS;
 		}
 		virtual operator std::string() const override { return "<class " + name + ">"; }
 		virtual size_t Size() const override  { return sizeof(*this) + name.capacity(); }
+		uint32_t GetSlot(const std::string& fieldName) const;
+		uint32_t GetOrCreateSlot(const std::string& fieldName);
 	};
 
 	struct VMInstanceValue : public VMFunctionBase
 	{
 		VMValue classValue;
-		std::unordered_map<std::string, VMValue> fields;
+		std::vector<VMValue> fields;
 		explicit VMInstanceValue(VMValue inClass)
 			: classValue(inClass)
 		{
@@ -170,12 +175,11 @@ public:
 		virtual size_t Size() const override
 		{
 			size_t size = sizeof(*this);
-			for (auto& pair : fields)
-			{
-				size += pair.first.capacity() + sizeof(VMValue);
-			}
+			size += fields.size() * sizeof(VMValue);
 			return size;
 		}
+		void SetField(uint32_t slotIndex, VMValue value);
+		VMValue GetField(uint32_t slotIndex);
 		void Blacken(VM& vm) override;
 
 		virtual int Arity() const override { return 0; }
@@ -335,6 +339,7 @@ private:
 		EmitBytes(args...);
 	}
 	void EmitConstant(VMValue value);
+	void EmitPropertyAccess(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint32_t cacheIndex);
 	Chunk* CurrentChunk();
 
 	// --- Variable Helpers ---

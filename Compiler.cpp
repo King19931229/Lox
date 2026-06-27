@@ -71,12 +71,58 @@ void Compiler::VMClosureValue::Blacken(VM& vm)
 	}
 }
 
+uint32_t Compiler::VMClassValue::GetSlot(const std::string& fieldName) const
+{
+	auto it = fieldToSlot.find(fieldName);
+	if (it != fieldToSlot.end())
+	{
+		return it->second;
+	}
+	return InlineCache::INVALID_SLOT;
+}
+
+uint32_t Compiler::VMClassValue::GetOrCreateSlot(const std::string& fieldName)
+{
+	auto it = fieldToSlot.find(fieldName);
+	if (it != fieldToSlot.end())
+	{
+		return it->second;
+	}
+	return fieldToSlot[fieldName] = slotNum++;
+}
+
+void Compiler::VMInstanceValue::SetField(uint32_t slotIndex, VMValue value)
+{
+	auto NextPowOfTwo = [](uint32_t value)
+	{
+		uint32_t ret = 1;
+		while (ret <= value) ret *= 2;
+		return ret;
+	};
+
+	if (slotIndex >= fields.size())
+	{
+		uint32_t targetSize = std::max(8U, NextPowOfTwo(slotIndex));
+		fields.resize(targetSize);
+	}
+	fields[slotIndex] = value;
+}
+
+VMValue Compiler::VMInstanceValue::GetField(uint32_t slotIndex)
+{
+	if (slotIndex < fields.size())
+	{
+		return fields[slotIndex];
+	}
+	return VMValue();
+}
+
 void Compiler::VMInstanceValue::Blacken(VM& vm)
 {
 	vm.MarkValue(classValue);
-	for (const auto& pair : fields)
+	for (const auto& value : fields)
 	{
-		vm.MarkValue(pair.second);
+		vm.MarkValue(value);
 	}
 }
 
@@ -953,38 +999,37 @@ void Compiler::Call(bool)
 	EmitBytes(OP_CALL, argCount);
 }
 
+void Compiler::EmitPropertyAccess(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint32_t cacheIndex)
+{
+	if (nameConstant <= 0xFF && cacheIndex <= 0xFF)
+	{
+		EmitBytes(op, (uint8_t)nameConstant, (uint8_t)cacheIndex);
+	}
+	else
+	{
+		EmitBytes(opLong,
+			(uint8_t)((nameConstant >> 16) & 0xFF),
+			(uint8_t)((nameConstant >> 8) & 0xFF),
+			(uint8_t)(nameConstant & 0xFF),
+			(uint8_t)((cacheIndex >> 16) & 0xFF),
+			(uint8_t)((cacheIndex >> 8) & 0xFF),
+			(uint8_t)(cacheIndex & 0xFF));
+	}
+}
+
 void Compiler::Dot(bool canAssign)
 {
 	Consume(IDENTIFIER, "Expect property name after '.'.");
 	uint32_t nameConstant = IdentifierConstant(parser.previous);
+	uint32_t cacheIndex = CurrentChunk()->AppendInlineCache();
 	if (canAssign && Match(TokenType::EQUAL))
 	{
 		Expression();
-		if (nameConstant <= 0xFF)
-		{
-			EmitBytes(OP_SET_PROPERTY, nameConstant);
-		}
-		else
-		{
-			EmitBytes(OP_SET_PROPERTY_LONG,
-				(uint8_t)((nameConstant >> 16) & 0xFF),
-				(uint8_t)((nameConstant >> 8) & 0xFF),
-				(uint8_t)(nameConstant & 0xFF));
-		}
+		EmitPropertyAccess(OP_SET_PROPERTY, OP_SET_PROPERTY_LONG, nameConstant, cacheIndex);
 	}
 	else
 	{
-		if (nameConstant <= 0xFF)
-		{
-			EmitBytes(OP_GET_PROPERTY, nameConstant);
-		}
-		else
-		{
-			EmitBytes(OP_GET_PROPERTY_LONG,
-				(uint8_t)((nameConstant >> 16) & 0xFF),
-				(uint8_t)((nameConstant >> 8) & 0xFF),
-				(uint8_t)(nameConstant & 0xFF));
-		}
+		EmitPropertyAccess(OP_GET_PROPERTY, OP_GET_PROPERTY_LONG, nameConstant, cacheIndex);
 	}
 }
 

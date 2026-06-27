@@ -513,6 +513,12 @@ InterpretResult VM::Run()
 		return value;
 	};
 
+	auto READ_THREE_BYTE = [&]() -> uint32_t {
+		uint32_t value = (*IP << 16) | (*(IP + 1) << 8) | *(IP + 2);
+		IP += 3;
+		return value;
+	};
+
 	auto READ_CONSTANT = [&]() -> VMValue
 	{
 		uint8_t constantIndex = READ_BYTE();
@@ -952,12 +958,20 @@ InterpretResult VM::Run()
 			case OP_GET_PROPERTY:
 			case OP_GET_PROPERTY_LONG:
 			{
-				VMValue nameValue = (opCode == OP_GET_PROPERTY) ? READ_CONSTANT() : READ_LONG_CONSTANT();
-				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				Chunk* chunk = frames[frameCount - 1].GetChunk();
+				uint32_t constantIndex;
+				uint32_t cacheIndex;
+				if (opCode == OP_GET_PROPERTY)
 				{
-					RuntimeError(IP, "Property name must be a string.");
-					return INTERPRET_RUNTIME_ERROR;
+					constantIndex = READ_BYTE();
+					cacheIndex = READ_BYTE();
 				}
+				else
+				{
+					constantIndex = READ_THREE_BYTE();
+					cacheIndex = READ_THREE_BYTE();
+				}
+
 				VMValue object = Pop();
 				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
 				{
@@ -965,20 +979,64 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
+
+				VMValue nameValue = chunk->constants.values[constantIndex];
+				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				{
+					RuntimeError(IP, "Property name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
 				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
-				auto it = instance->fields.find(propertyName);
-				if (it == instance->fields.end())
+
+				InlineCache& cache = chunk->GetInlineCache(cacheIndex);
+				uint32_t slot;
+				if (cache.Match(klass))
+				{
+					slot = cache.slot;
+				}
+				else
+				{
+					slot = klass->GetSlot(propertyName);
+					if (slot != InlineCache::INVALID_SLOT)
+					{
+						cache.Update(klass, slot);
+					}
+				}
+
+				if (slot == InlineCache::INVALID_SLOT)
 				{
 					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Push(it->second);
+
+				VMValue valueToGet = instance->GetField(slot);
+				if (valueToGet.value == nullptr)
+				{
+					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Push(valueToGet);
 				break;
 			}
 			case OP_SET_PROPERTY:
 			case OP_SET_PROPERTY_LONG:
 			{
-				VMValue nameValue = (opCode == OP_SET_PROPERTY) ? READ_CONSTANT() : READ_LONG_CONSTANT();
+				Chunk* chunk = frames[frameCount - 1].GetChunk();
+				uint32_t constantIndex;
+				uint32_t cacheIndex;
+				if (opCode == OP_SET_PROPERTY)
+				{
+					constantIndex = READ_BYTE();
+					cacheIndex = READ_BYTE();
+				}
+				else
+				{
+					constantIndex = READ_THREE_BYTE();
+					cacheIndex = READ_THREE_BYTE();
+				}
+
+				VMValue nameValue = chunk->constants.values[constantIndex];
 				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
 				{
 					RuntimeError(IP, "Property name must be a string.");
@@ -992,8 +1050,22 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
 				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
-				instance->fields[propertyName] = valueToSet;
+
+				InlineCache& cache = chunk->GetInlineCache(cacheIndex);
+				uint32_t slot;
+				if (cache.Match(klass))
+				{
+					slot = cache.slot;
+				}
+				else
+				{
+					slot = klass->GetOrCreateSlot(propertyName);
+					cache.Update(klass, slot);
+				}
+
+				instance->SetField(slot, valueToSet);
 				Push(valueToSet);
 				break;
 			}
@@ -1012,14 +1084,21 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
 				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
-				auto it = instance->fields.find(propertyName);
-				if (it == instance->fields.end())
+				uint32_t slot = klass->GetSlot(propertyName);
+				if (slot == InlineCache::INVALID_SLOT)
 				{
 					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Push(it->second);
+				VMValue valueToGet = instance->GetField(slot);
+				if (valueToGet.value == nullptr)
+				{
+					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Push(valueToGet);
 				break;
 			}
 			case OP_SET_INDEX:
@@ -1038,8 +1117,10 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
 				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
-				instance->fields[propertyName] = valueToSet;
+				uint32_t slot = klass->GetOrCreateSlot(propertyName);
+				instance->SetField(slot, valueToSet);
 				Push(valueToSet);
 				break;
 			}
@@ -1268,6 +1349,24 @@ void VM::MarkCompilerRoots()
 	}
 }
 
+void VM::InvalidateInlineCaches()
+{
+	for (Value* object = objects; object != nullptr; object = object->nextGCValue)
+	{
+		if (object->type != TYPE_CALLABLE)
+		{
+			continue;
+		}
+
+		Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(object);
+		Chunk* chunk = functionValue->GetChunk();
+		if (chunk != nullptr)
+		{
+			chunk->InvalidateInlineCaches();
+		}
+	}
+}
+
 void VM::CollectGarbage()
 {
 #ifdef DEBUG_LOG_GC
@@ -1276,6 +1375,8 @@ void VM::CollectGarbage()
 	MarkRoots();
 	TraceReferences();
 	Sweep();
+	// Inline caches keep raw class identities, so a GC cycle invalidates them.
+	InvalidateInlineCaches();
 	nextGC = bytesAllocated * GC_HEAP_GROW_FACTOR;
 	if (nextGC < INITIAL_GC_THRESHOLD)
 	{

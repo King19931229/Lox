@@ -1,5 +1,6 @@
 #include "Chunk.h"
 #include <cstdio>
+#include <cassert>
 #include <iostream>
 
 static void PrintIndent(int32_t indent)
@@ -35,6 +36,51 @@ void VMValueArray::Free()
 	Init();
 }
 
+void InlineCacheArray::Init()
+{
+	capacity = 0;
+	count = 0;
+	caches = nullptr;
+}
+
+uint32_t InlineCacheArray::Append()
+{
+	if (capacity < count + 1)
+	{
+		int32_t oldCapacity = capacity;
+		capacity = GROW_CAPACITY(oldCapacity);
+		caches = GROW_ARRAY(InlineCache, caches, oldCapacity, capacity);
+	}
+	caches[count] = InlineCache();
+	return (uint32_t)count++;
+}
+
+InlineCache& InlineCacheArray::Get(uint32_t index)
+{
+	assert(index < (uint32_t)count);
+	return caches[index];
+}
+
+const InlineCache& InlineCacheArray::Get(uint32_t index) const
+{
+	assert(index < (uint32_t)count);
+	return caches[index];
+}
+
+void InlineCacheArray::Free()
+{
+	FREE_ARRAY(InlineCache, caches, capacity);
+	Init();
+}
+
+void InlineCacheArray::InvalidateAll()
+{
+	for (int32_t i = 0; i < count; ++i)
+	{
+		caches[i] = InlineCache();
+	}
+}
+
 // Chunk implementations
 void Chunk::Init()
 {
@@ -44,6 +90,7 @@ void Chunk::Init()
 	lines = nullptr;
 	columns = nullptr;
 	constants.Init();
+	inlineCaches.Init();
 }
 
 void Chunk::Write(uint8_t byte, int32_t line, int32_t column)
@@ -88,10 +135,31 @@ int32_t Chunk::AddConstant(VMValue value)
 void Chunk::Free()
 {
 	constants.Free();
+	inlineCaches.Free();
 	FREE_ARRAY(uint8_t, code, capacity);
 	FREE_ARRAY(int32_t, lines, capacity);
 	FREE_ARRAY(int32_t, columns, capacity);
 	Init();
+}
+
+uint32_t Chunk::AppendInlineCache()
+{
+	return inlineCaches.Append();
+}
+
+InlineCache& Chunk::GetInlineCache(uint32_t cacheIndex)
+{
+	return inlineCaches.Get(cacheIndex);
+}
+
+const InlineCache& Chunk::GetInlineCache(uint32_t cacheIndex) const
+{
+	return inlineCaches.Get(cacheIndex);
+}
+
+void Chunk::InvalidateInlineCaches()
+{
+	inlineCaches.InvalidateAll();
 }
 
 int32_t Chunk::SimpleInstruction(const char* name, int32_t offset)
@@ -165,6 +233,30 @@ int32_t Chunk::ConstantLongInstruction(const char* name, int32_t offset)
 	PrintValue(constants.values[constant]);
 	printf("'\n");
 	return offset + 4;
+}
+
+int32_t Chunk::PropertyInstruction(const char* name, int32_t offset)
+{
+	uint8_t nameIndex = code[offset + 1];
+	uint8_t cacheIndex = code[offset + 2];
+	printf("%-16s %4d '", name, nameIndex);
+	PrintValue(constants.values[nameIndex]);
+	printf("' cache %u\n", cacheIndex);
+	return offset + 3;
+}
+
+int32_t Chunk::PropertyLongInstruction(const char* name, int32_t offset)
+{
+	uint32_t nameIndex = (uint32_t)(code[offset + 1] << 16);
+	nameIndex |= (uint32_t)(code[offset + 2] << 8);
+	nameIndex |= (uint32_t)(code[offset + 3]);
+	uint32_t cacheIndex = (uint32_t)(code[offset + 4] << 16);
+	cacheIndex |= (uint32_t)(code[offset + 5] << 8);
+	cacheIndex |= (uint32_t)(code[offset + 6]);
+	printf("%-16s %4d '", name, nameIndex);
+	PrintValue(constants.values[nameIndex]);
+	printf("' cache %u\n", cacheIndex);
+	return offset + 7;
 }
 
 int32_t Chunk::ClosureInstruction(const char* name, int32_t offset, int32_t indent)
@@ -274,13 +366,13 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 		case OP_CLASS:
 			return ConstantInstruction("OP_CLASS", offset);
 		case OP_SET_PROPERTY:
-			return ConstantInstruction("OP_SET_PROPERTY", offset);
+			return PropertyInstruction("OP_SET_PROPERTY", offset);
 		case OP_GET_PROPERTY:
-			return ConstantInstruction("OP_GET_PROPERTY", offset);
+			return PropertyInstruction("OP_GET_PROPERTY", offset);
 		case OP_SET_PROPERTY_LONG:
-			return ConstantLongInstruction("OP_SET_PROPERTY_LONG", offset);
+			return PropertyLongInstruction("OP_SET_PROPERTY_LONG", offset);
 		case OP_GET_PROPERTY_LONG:
-			return ConstantLongInstruction("OP_GET_PROPERTY_LONG", offset);
+			return PropertyLongInstruction("OP_GET_PROPERTY_LONG", offset);
 		case OP_GET_INDEX:
 			return SimpleInstruction("OP_GET_INDEX", offset);
 		case OP_SET_INDEX:

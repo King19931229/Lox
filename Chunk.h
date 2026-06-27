@@ -135,6 +135,45 @@ struct VMValueArray
 	void Free();
 };
 
+struct InlineCache
+{
+	static constexpr uint32_t INVALID_SLOT = UINT32_MAX;
+
+	void* klass;
+	uint32_t slot;
+
+	InlineCache()
+		: klass(nullptr)
+		, slot(INVALID_SLOT)
+	{
+	}
+
+	bool Match(void* inKlass) const
+	{
+		return inKlass && klass == inKlass;
+	}
+
+	void Update(void* inKlass, uint32_t inSlot)
+	{
+		klass = inKlass;
+		slot = inSlot;
+	}
+};
+
+struct InlineCacheArray
+{
+	int32_t capacity;
+	int32_t count;
+	InlineCache* caches;
+
+	void Init();
+	uint32_t Append();
+	InlineCache& Get(uint32_t index);
+	const InlineCache& Get(uint32_t index) const;
+	void InvalidateAll();
+	void Free();
+};
+
 struct Chunk
 {
 	int32_t capacity;
@@ -143,6 +182,7 @@ struct Chunk
 	int32_t* lines;
 	int32_t* columns;
 	VMValueArray constants;
+	InlineCacheArray inlineCaches;
 
 	Chunk()
 	{
@@ -171,7 +211,14 @@ struct Chunk
 	void PrintValueStdout(VMValue value);
 	int32_t ConstantInstruction(const char* name, int32_t offset);
 	int32_t ConstantLongInstruction(const char* name, int32_t offset);
+	int32_t PropertyInstruction(const char* name, int32_t offset);
+	int32_t PropertyLongInstruction(const char* name, int32_t offset);
 	int32_t ClosureInstruction(const char* name, int32_t offset, int32_t indent);
+
+	uint32_t AppendInlineCache();
+	InlineCache& GetInlineCache(uint32_t cacheIndex);
+	const InlineCache& GetInlineCache(uint32_t cacheIndex) const;
+	void InvalidateInlineCaches();
 	int32_t DisassembleInstruction(int32_t offset, int32_t indent = 0);
 	void DisassembleConstant(int32_t index, int32_t indent = 0);
 	void Disassemble(const char* name, int32_t indent = 0);

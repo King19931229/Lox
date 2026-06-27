@@ -773,9 +773,11 @@ void TestUnit::RunVMTest()
 		{ "class Box { } var b = Box(); var k = \"val\"; b[k] = 7; print b[\"val\"];", "7\n" },
 		{ "class Box { } var b = Box(); b[\"a\" + \"b\"] = 5; print b.ab;", "5\n" },
 		{ "class Box { } var b = Box(); b[\"x\"] = 1; b[\"x\"] = b[\"x\"] + 4; print b[\"x\"];", "5\n" },
+		{ "class A { } class B { } fun readX(obj) { print obj.x; } var a = A(); var b = B(); a.x = 1; b.x = 2; readX(a); readX(b); readX(a);", "1\n2\n1\n" },
 		{ "class Box { } var b = Box(); print b[123];", "Property name must be a string.", INTERPRET_RUNTIME_ERROR },
 		{ "var n = 1; print n[\"x\"];", "Only instances can be indexed.", INTERPRET_RUNTIME_ERROR },
 		{ "class Box { } var b = Box(); print b[\"missing\"];", "Undefined property 'missing'.", INTERPRET_RUNTIME_ERROR },
+		{ "class Box { } var b = Box(); b[\"x\"] = 1; print b[\"missing\"];", "Undefined property 'missing'.", INTERPRET_RUNTIME_ERROR },
 	};
 
 #ifdef _WIN32

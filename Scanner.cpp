@@ -241,6 +241,8 @@ void Scanner::ScanToken()
 		case ')': AddToken(RIGHT_PAREN); break;
 		case '{': AddToken(LEFT_BRACE); break;
 		case '}': AddToken(RIGHT_BRACE); break;
+		case '[': AddToken(LEFT_BRACKET); break;
+		case ']': AddToken(RIGHT_BRACKET); break;
 		case ',': AddToken(COMMA); break;
 		case '.':
 		{
