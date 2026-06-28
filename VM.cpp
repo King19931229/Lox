@@ -1115,6 +1115,35 @@ InterpretResult VM::Run()
 				Push(valueToSet);
 				break;
 			}
+			case OP_METHOD:
+			case OP_METHOD_LONG:
+			{
+				VMValue nameValue;
+				if (opCode == OP_METHOD)
+					nameValue = READ_CONSTANT();
+				else
+					nameValue = READ_LONG_CONSTANT();
+				VMValue methodValue = Pop();
+				VMValue classValue = Peek(0);
+				if (classValue.value == nullptr || classValue.value->type != TYPE_CLASS)
+				{
+					RuntimeError(IP, "Only classes can have methods.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(classValue.value);
+				if (methodValue.value == nullptr || methodValue.value->type != TYPE_CALLABLE)
+				{
+					RuntimeError(IP, "Method must be a callable.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(methodValue.value);
+				if (functionValue->GetType() != Compiler::VM_FUNC_CLOSURE)
+				{
+					RuntimeError(IP, "Method must be a closure.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				klass->methods[static_cast<StringValue*>(nameValue.value)->value] = methodValue;
+			}
 		}
 	}
 

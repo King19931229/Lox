@@ -377,6 +377,10 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 			return SimpleInstruction("OP_GET_INDEX", offset);
 		case OP_SET_INDEX:
 			return SimpleInstruction("OP_SET_INDEX", offset);
+		case OP_METHOD:
+			return ConstantInstruction("OP_METHOD", offset);
+		case OP_METHOD_LONG:
+			return ConstantLongInstruction("OP_METHOD_LONG", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;

@@ -117,6 +117,15 @@ VMValue Compiler::VMInstanceValue::GetField(uint32_t slotIndex)
 	return VMValue();
 }
 
+void Compiler::VMClassValue::Blacken(VM& vm)
+{
+	vm.MarkValue(superClass);
+	for (const auto& method : methods)
+	{
+		vm.MarkValue(method.second);
+	}
+}
+
 void Compiler::VMInstanceValue::Blacken(VM& vm)
 {
 	vm.MarkValue(classValue);
@@ -406,8 +415,34 @@ void Compiler::ClassDeclaration()
 	// Push the class on the stack
 	EmitBytes(OP_CLASS, nameConstant);
 	DefineVariable(nameConstant, false);
+	NamedVariable(false);
 	Consume(LEFT_BRACE, "Expect '{' before class body.");
+	// Push the class on the stack so methods can access it.
+	while (!Check(RIGHT_BRACE) && !Check(END_OF_FILE))
+	{
+		Method();
+	}
+	// Pop the class after methods are defined.
+	EmitByte(OP_POP);
 	Consume(RIGHT_BRACE, "Expect '}' after class body.");
+}
+
+void Compiler::Method()
+{
+	Consume(FUN, "Expect 'fun' before method name.");
+	Consume(IDENTIFIER, "Except method name.");
+	uint32_t nameConstant = IdentifierConstant(parser.previous);
+	Function(TYPE_FUNCTION, parser.previous.lexeme);
+	if (nameConstant <= 0xFF)
+	{
+		EmitBytes(OP_METHOD, nameConstant);
+	}
+	else
+	{
+		EmitBytes(OP_METHOD_LONG, (nameConstant >> 16) & 0xFF,
+			(nameConstant >> 8) & 0xFF,
+			nameConstant & 0xFF);
+	}
 }
 
 void Compiler::IfStatement()

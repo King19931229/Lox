@@ -143,6 +143,7 @@ public:
 	{
 		std::string name;
 		std::unordered_map<std::string, uint32_t> fieldToSlot;
+		std::unordered_map<std::string, VMValue> methods;
 		uint32_t slotNum;
 		VMValue superClass;
 		explicit VMClassValue(const std::string& inName, VMValue inSuperClass = VMValue())
@@ -156,6 +157,7 @@ public:
 		virtual size_t Size() const override  { return sizeof(*this) + name.capacity(); }
 		uint32_t GetSlot(const std::string& fieldName) const;
 		uint32_t GetOrCreateSlot(const std::string& fieldName);
+		void Blacken(VM& vm) override;
 	};
 
 	struct VMInstanceValue : public VMFunctionBase
@@ -300,6 +302,7 @@ private:
 	void Expression();
 	void BeginScope();
 	void Block();
+	void Method();
 	void EndScope();
 	void ParsePrecedence(Precedence precedence);
 	void Synchronize();
