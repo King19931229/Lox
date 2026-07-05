@@ -276,20 +276,12 @@ int main(int argc, char* argv[])
 	{
 		fun func(v0, v1)
 		{
-			return v0;
+			return v0 + v1 + this.v;
 		}
 	}
-	print Foo;
 	var foo = Foo();
-	foo.fuck = 123;
-	print foo.fuck;
-	{
-		class Bar {}
-		print Bar;
-		var bar = Bar();
-		bar.shit = 456;
-		print bar.shit;
-	}
+	foo.v = 3;
+	print foo.func(1, 2);	
 	)");
 	vm.Free();
 #endif

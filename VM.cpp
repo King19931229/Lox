@@ -9,7 +9,7 @@
 #include <chrono>
 
 // #define DEBUG_TRACE_EXECUTION
-// #define DEBUG_STRESS_GC
+#define DEBUG_STRESS_GC
 // #define DEBUG_LOG_GC
 // #define USE_LOCAL_IP
 
@@ -972,7 +972,7 @@ InterpretResult VM::Run()
 					cacheIndex = READ_THREE_BYTE();
 				}
 
-				VMValue object = Pop();
+				VMValue object = Peek(0);
 				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
 				{
 					RuntimeError(IP, "Only instances have properties.");
@@ -994,25 +994,34 @@ InterpretResult VM::Run()
 				if (!cache.Match(klass, slot))
 				{
 					slot = klass->GetSlot(propertyName);
-					if (slot != InlineCache::INVALID_SLOT)
+					if (slot != Compiler::VMClassValue::INVALID_SLOT)
 					{
 						cache.Update(klass, slot);
 					}
 				}
 
-				if (slot == InlineCache::INVALID_SLOT)
+				VMValue valueToGet = (slot != Compiler::VMClassValue::INVALID_SLOT) ? instance->GetField(slot) : VMValue();
+				if (valueToGet.value)
 				{
-					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
-					return INTERPRET_RUNTIME_ERROR;
+					// Pop the instance
+					Pop();
+					Push(valueToGet);
 				}
-
-				VMValue valueToGet = instance->GetField(slot);
-				if (valueToGet.value == nullptr)
+				else
 				{
-					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
-					return INTERPRET_RUNTIME_ERROR;
+					auto methodIt = klass->methods.find(propertyName);
+					if (methodIt != klass->methods.end())
+					{
+						// Pop the instance
+						Pop();
+						Push(VM::Create(new Compiler::BoundMethodValue(object, methodIt->second)));
+					}
+					else
+					{
+						RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
+						return INTERPRET_RUNTIME_ERROR;
+					}
 				}
-				Push(valueToGet);
 				break;
 			}
 			case OP_SET_PROPERTY:
@@ -1078,7 +1087,7 @@ InterpretResult VM::Run()
 				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
 				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
 				uint32_t slot = klass->GetSlot(propertyName);
-				if (slot == InlineCache::INVALID_SLOT)
+				if (slot == Compiler::VMClassValue::INVALID_SLOT)
 				{
 					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
 					return INTERPRET_RUNTIME_ERROR;
@@ -1174,13 +1183,24 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 		return true;
 	}
 
-	if (callee.value->type != TYPE_CALLABLE)
+	if (callee.value->type != TYPE_CALLABLE && callee.value->type != TYPE_BOUND_METHOD)
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;
 	}
 
-	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(callee.value);
+	VMValue closure;
+	if (callee.value->type == TYPE_BOUND_METHOD)
+	{
+		Compiler::BoundMethodValue* boundMethod = static_cast<Compiler::BoundMethodValue*>(callee.value);
+		closure = boundMethod->method;
+	}
+	else
+	{
+		closure = callee;
+	}
+
+	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(closure.value);
 	VMValue function = closureValue->function;
 
 	if (!function.value || function.value->type != TYPE_CALLABLE)
@@ -1190,8 +1210,7 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 	}
 
 	Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(function.value);
-
-	if (!functionValue || (functionValue->GetType() != Compiler::VM_FUNC_NATIVE && !function.GetChunk()))
+	if (functionValue->GetType() != Compiler::VM_FUNC_NATIVE && !function.GetChunk())
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;
@@ -1228,10 +1247,15 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 		}
 
 		CallFrame newFrame;
-		newFrame.closure = callee;
+		newFrame.closure = closure;
 		newFrame.ip = newFrame.GetChunk()->code;
 		// Frame slots start at the callee slot, so locals can index from that base.
 		newFrame.slots = stackTop - argCount - 1;
+		// If the callee is a bound method, the receiver is stored in slot 0 of the new frame.
+		if (callee.value->type == TYPE_BOUND_METHOD)
+		{
+			newFrame.slots[0] = static_cast<Compiler::BoundMethodValue*>(callee.value)->receiver;
+		}
 		frames[frameCount++] = newFrame;
 	}
 

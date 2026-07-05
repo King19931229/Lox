@@ -17,6 +17,7 @@ enum ValueType
 	TYPE_INSTANCE,
 	// For upvalues captured by closures. Only useable in VM.
 	TYPE_UPVALUE,
+	TYPE_BOUND_METHOD,
 	TYPE_ERROR // Error type
 };
 

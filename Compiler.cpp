@@ -31,6 +31,8 @@ Compiler::Compiler(Compiler* inEnclosing, ParseContext* sharedCtx)
 	compilingChunk = new Chunk();
 	compilingChunk->Init();
 	function = VMValue();
+	type = TYPE_SCRIPT;
+	currentClass = inEnclosing->currentClass;
 }
 
 Compiler::~Compiler()
@@ -78,7 +80,7 @@ uint32_t Compiler::VMClassValue::GetSlot(const std::string& fieldName) const
 	{
 		return it->second;
 	}
-	return InlineCache::INVALID_SLOT;
+	return INVALID_SLOT;
 }
 
 uint32_t Compiler::VMClassValue::GetOrCreateSlot(const std::string& fieldName)
@@ -126,6 +128,12 @@ void Compiler::VMClassValue::Blacken(VM& vm)
 	}
 }
 
+void Compiler::BoundMethodValue::Blacken(VM& vm)
+{
+	vm.MarkValue(receiver);
+	vm.MarkValue(method);
+}
+
 void Compiler::VMInstanceValue::Blacken(VM& vm)
 {
 	vm.MarkValue(classValue);
@@ -154,6 +162,11 @@ void Compiler::Init(FunctionType inType, const std::string& name)
 	// The first local slot is reserved for internal use
 	Local local;
 	local.depth = 0;
+	if (inType != TYPE_FUNCTION)
+	{
+		// The first local is always "this" for methods, even if it's not used.
+		local.name.lexeme = "this";
+	}
 	locals.push_back(local);
 }
 
@@ -415,6 +428,11 @@ void Compiler::ClassDeclaration()
 	// Push the class on the stack
 	EmitBytes(OP_CLASS, nameConstant);
 	DefineVariable(nameConstant, false);
+
+	ClassCompiler classCompiler;
+	classCompiler.enclosing = currentClass;
+	currentClass = &classCompiler;
+
 	NamedVariable(false);
 	Consume(LEFT_BRACE, "Expect '{' before class body.");
 	// Push the class on the stack so methods can access it.
@@ -422,9 +440,11 @@ void Compiler::ClassDeclaration()
 	{
 		Method();
 	}
+	Consume(RIGHT_BRACE, "Expect '}' after class body.");
 	// Pop the class after methods are defined.
 	EmitByte(OP_POP);
-	Consume(RIGHT_BRACE, "Expect '}' after class body.");
+
+	currentClass = currentClass->enclosing;
 }
 
 void Compiler::Method()
@@ -432,7 +452,7 @@ void Compiler::Method()
 	Consume(FUN, "Expect 'fun' before method name.");
 	Consume(IDENTIFIER, "Except method name.");
 	uint32_t nameConstant = IdentifierConstant(parser.previous);
-	Function(TYPE_FUNCTION, parser.previous.lexeme);
+	Function(TYPE_METHOD, parser.previous.lexeme);
 	if (nameConstant <= 0xFF)
 	{
 		EmitBytes(OP_METHOD, nameConstant);
@@ -812,6 +832,15 @@ void Compiler::Literal(bool /*canAssign*/)
 	}
 }
 
+void Compiler::This(bool)
+{
+	if (!currentClass)
+	{
+		Error("Can't use 'this' outside of a method.");
+	}
+	NamedVariable(false);
+}
+
 void Compiler::String(bool /*canAssign*/)
 {
 	const std::string& lexeme = parser.previous.lexeme;
@@ -1175,7 +1204,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[PRINT]         = { nullptr,             nullptr,            PREC_NONE };
 		rules[RETURN]        = { nullptr,             nullptr,            PREC_NONE };
 		rules[SUPER]         = { nullptr,             nullptr,            PREC_NONE };
-		rules[THIS]          = { nullptr,             nullptr,            PREC_NONE };
+		rules[THIS]          = { &Compiler::This,     nullptr,            PREC_NONE };
 		rules[TRUE]          = { &Compiler::Literal,  nullptr,            PREC_NONE };
 		rules[VAR]           = { nullptr,             nullptr,            PREC_NONE };
 		rules[WHILE]         = { nullptr,             nullptr,            PREC_NONE };

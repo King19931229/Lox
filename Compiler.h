@@ -9,6 +9,7 @@ class Compiler
 	{
 		TYPE_SCRIPT,
 		TYPE_FUNCTION,
+		TYPE_METHOD,
 	};
 protected:
 public:
@@ -24,8 +25,9 @@ public:
 		VM_FUNC_SCRIPT,
 		VM_FUNC_FUNCTION,
 		VM_FUNC_NATIVE,
-		VM_FUNC_CLASS,
-		VM_FUNC_CLOSURE
+		VM_FUNC_CLOSURE,
+		VM_FUNC_CLASS_INIT,
+		VM_FUNC_METHOD,
 	};
 	
 	friend class VM;
@@ -141,6 +143,7 @@ public:
 
 	struct VMClassValue : public Value
 	{
+		static constexpr uint32_t INVALID_SLOT = UINT32_MAX;
 		std::string name;
 		std::unordered_map<std::string, uint32_t> fieldToSlot;
 		std::unordered_map<std::string, VMValue> methods;
@@ -185,7 +188,37 @@ public:
 		void Blacken(VM& vm) override;
 
 		virtual int Arity() const override { return 0; }
-		virtual VMFunctionType GetType() const override { return VM_FUNC_CLASS; }
+		virtual VMFunctionType GetType() const override { return VM_FUNC_CLASS_INIT; }
+	};
+
+	struct BoundMethodValue : public VMFunctionBase
+	{
+		// This
+		VMValue receiver;
+		VMValue method;
+		explicit BoundMethodValue(VMValue inReceiver, VMValue inMethod)
+			: receiver(inReceiver)
+			, method(inMethod)
+		{
+			this->type = TYPE_BOUND_METHOD;
+		}
+		virtual operator std::string() const override
+		{
+			VMClosureValue* closure = static_cast<VMClosureValue*>(method.value);
+			VMInstanceValue* instance = static_cast<VMInstanceValue*>(receiver.value);
+			return "<bound method " + closure->function.value->operator std::string() + " of " + instance->operator std::string() + ">";
+		}
+		virtual size_t Size() const override
+		{
+			return sizeof(*this);
+		}
+		virtual int Arity() const override
+		{
+			VMClosureValue* closure = static_cast<VMClosureValue*>(method.value);
+			return closure->Arity();
+		}
+		void Blacken(VM& vm) override;
+		virtual VMFunctionType GetType() const override { return VM_FUNC_METHOD; }
 	};
 private:
 	enum Precedence
@@ -273,6 +306,12 @@ private:
 	};
 	std::vector<UpValue> upvalues;
 
+	struct ClassCompiler
+	{
+		ClassCompiler* enclosing = nullptr;
+	};
+	ClassCompiler* currentClass = nullptr;
+
 	int scopeDepth = 0;
 
 	uint32_t currentLoopStart = -1;
@@ -323,6 +362,7 @@ private:
 	void Call(bool);
 	void Dot(bool canAssign);
 	void Bracket(bool canAssign);
+	void This(bool);
 
 	// --- Token Helpers ---
 	Token ScanToken();

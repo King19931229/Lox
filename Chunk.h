@@ -139,7 +139,6 @@ struct VMValueArray
 
 struct InlineCache
 {
-	static constexpr uint32_t INVALID_SLOT = UINT32_MAX;
 	static constexpr uint32_t ENTRY_COUNT = 4;
 
 	struct Entry
@@ -156,7 +155,7 @@ struct InlineCache
 		for (uint32_t i = 0; i < ENTRY_COUNT; ++i)
 		{
 			enries[i].klass = nullptr;
-			enries[i].slot = INVALID_SLOT;
+			enries[i].slot = -1;
 		}
 	}
 
