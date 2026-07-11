@@ -274,6 +274,32 @@ int32_t Chunk::ClosureInstruction(const char* name, int32_t offset, int32_t inde
 	return offset;
 }
 
+int32_t Chunk::InvokeInstruction(const char* name, int32_t offset)
+{
+	uint8_t nameIndex = code[offset + 1];
+	uint8_t argCount = code[offset + 2];
+	uint8_t cacheIndex = code[offset + 3];
+	printf("%-16s %4d '", name, nameIndex);
+	PrintValue(constants.values[nameIndex]);
+	printf("'(%d args) cache %u\n", argCount, cacheIndex);
+	return offset + 4;
+}
+
+int32_t Chunk::InvokeLongInstruction(const char* name, int32_t offset)
+{
+	uint32_t nameIndex = (uint32_t)(code[offset + 1] << 16);
+	nameIndex |= (uint32_t)(code[offset + 2] << 8);
+	nameIndex |= (uint32_t)(code[offset + 3]);
+	uint8_t argCount = code[offset + 4];
+	uint32_t cacheIndex = (uint32_t)(code[offset + 5] << 16);
+	cacheIndex |= (uint32_t)(code[offset + 6] << 8);
+	cacheIndex |= (uint32_t)(code[offset + 7]);
+	printf("%-16s %4d '", name, nameIndex);
+	PrintValue(constants.values[nameIndex]);
+	printf("'(%d args) cache %u\n", argCount, cacheIndex);
+	return offset + 8;
+}
+
 int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 {
 	PrintIndent(indent);
@@ -381,6 +407,10 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 			return ConstantInstruction("OP_METHOD", offset);
 		case OP_METHOD_LONG:
 			return ConstantLongInstruction("OP_METHOD_LONG", offset);
+		case OP_INVOKE:
+			return InvokeInstruction("OP_INVOKE", offset);
+		case OP_INVOKE_LONG:
+			return InvokeLongInstruction("OP_INVOKE_LONG", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;

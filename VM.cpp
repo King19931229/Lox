@@ -8,7 +8,7 @@
 #include <iostream>
 #include <chrono>
 
-// #define DEBUG_TRACE_EXECUTION
+#define DEBUG_TRACE_EXECUTION
 #define DEBUG_STRESS_GC
 // #define DEBUG_LOG_GC
 // #define USE_LOCAL_IP
@@ -633,6 +633,7 @@ InterpretResult VM::Run()
 		}
 
 #ifdef DEBUG_TRACE_EXECUTION
+			printf("> ");
 			frames[frameCount - 1].GetChunk()->DisassembleInstruction((uint32_t)(IP - frames[frameCount - 1].GetChunk()->code), frameCount - 1);
 #endif
 
@@ -955,6 +956,74 @@ InterpretResult VM::Run()
 				Push(classValue);
 				break;
 			}
+			case OP_INVOKE:
+			case OP_INVOKE_LONG:
+			{
+				VMValue nameValue = (opCode == OP_INVOKE) ? READ_CONSTANT() : READ_LONG_CONSTANT();
+				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				{
+					RuntimeError(IP, "Method name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				uint8_t argCountValue = READ_BYTE();
+				uint32_t cacheIndex = (opCode == OP_INVOKE) ? READ_BYTE() : READ_THREE_BYTE();
+
+				VMValue object = stackTop[-argCountValue - 1];
+				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				{
+					RuntimeError(IP, "Only instances have methods.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
+
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				InlineCache& cache = frames[frameCount - 1].GetChunk()->GetInlineCache(cacheIndex);
+
+				uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
+				VMValue method;
+				const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
+				if (entry)
+				{
+					slot = entry->slot;
+					method = entry->method;
+				}
+				else
+				{
+					slot = klass->GetSlot(propertyName);
+					auto methodIt = klass->methods.find(propertyName);
+					if (methodIt != klass->methods.end())
+					{
+						method = methodIt->second;
+					}
+					if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
+					{
+						RuntimeError(IP, "Undefined method '%s'.", propertyName.c_str());
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					cache.Update(klass, klass->slotNum, slot, method);
+				}
+
+				VMValue callee = slot != Compiler::VMClassValue::INVALID_SLOT ? instance->GetField(slot) : VMValue();
+				// Keep the caller IP up to date before either call path can push a frame.
+				frames[frameCount - 1].ip = IP;
+				if (!callee.value && !method.value)
+				{
+					RuntimeError(IP, "Undefined method '%s'.", propertyName.c_str());
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				bool invoked = callee.value
+					? Call(callee, argCountValue, IP)
+					: Invoke(instance, method, argCountValue, IP);
+				if (!invoked)
+				{
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				IP = frames[frameCount - 1].ip;
+				break;
+			}
 			case OP_GET_PROPERTY:
 			case OP_GET_PROPERTY_LONG:
 			{
@@ -990,14 +1059,23 @@ InterpretResult VM::Run()
 				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
 
 				InlineCache& cache = chunk->GetInlineCache(cacheIndex);
-				uint32_t slot;
-				if (!cache.Match(klass, slot))
+				uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
+				VMValue method;
+				const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
+				if (entry)
+				{
+					slot = entry->slot;
+					method = entry->method;
+				}
+				else
 				{
 					slot = klass->GetSlot(propertyName);
-					if (slot != Compiler::VMClassValue::INVALID_SLOT)
+					auto methodIt = klass->methods.find(propertyName);
+					if (methodIt != klass->methods.end())
 					{
-						cache.Update(klass, slot);
+						method = methodIt->second;
 					}
+					cache.Update(klass, klass->slotNum, slot, method);
 				}
 
 				VMValue valueToGet = (slot != Compiler::VMClassValue::INVALID_SLOT) ? instance->GetField(slot) : VMValue();
@@ -1009,12 +1087,11 @@ InterpretResult VM::Run()
 				}
 				else
 				{
-					auto methodIt = klass->methods.find(propertyName);
-					if (methodIt != klass->methods.end())
+					if (method.value)
 					{
-						// Pop the instance
+						VMValue boundMethod = VM::Create(new Compiler::BoundMethodValue(object, method));
 						Pop();
-						Push(VM::Create(new Compiler::BoundMethodValue(object, methodIt->second)));
+						Push(boundMethod);
 					}
 					else
 					{
@@ -1059,11 +1136,16 @@ InterpretResult VM::Run()
 				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
 
 				InlineCache& cache = chunk->GetInlineCache(cacheIndex);
+				const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
 				uint32_t slot;
-				if (!cache.Match(klass, slot))
+				if (entry)
+				{
+					slot = entry->slot;
+				}
+				else
 				{
 					slot = klass->GetOrCreateSlot(propertyName);
-					cache.Update(klass, slot);
+					cache.Update(klass, klass->slotNum, slot, VMValue());
 				}
 				instance->SetField(slot, valueToSet);
 				Push(valueToSet);
@@ -1175,11 +1257,34 @@ InterpretResult VM::Interpret(VMValue function)
 
 bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 {
+	if (callee.value == nullptr)
+	{
+		RuntimeError(instructionIp, "Can't call a non-function value.");
+		return false;
+	}
+
 	if (callee.value->type == TYPE_CLASS)
 	{
-		VMValue instance = VM::Create(new Compiler::VMInstanceValue(static_cast<Compiler::VMClassValue*>(callee.value)));
+		Compiler::VMClassValue* classValue = static_cast<Compiler::VMClassValue*>(callee.value);
+		VMValue instance = VM::Create(new Compiler::VMInstanceValue(classValue));
 		// Replace the callee on the stack with the new instance
 		stackTop[-argCount - 1] = instance;
+		auto initIt = classValue->methods.find("init");
+		if (initIt != classValue->methods.end())
+		{
+			VMValue initMethod = initIt->second;
+			VMValue boundMethod = VM::Create(new Compiler::BoundMethodValue(instance, initMethod));
+			stackTop[-argCount - 1] = boundMethod;
+			if (!Call(boundMethod, argCount, instructionIp))
+			{
+				return false;
+			}
+		}
+		else if (argCount > 0)
+		{
+			RuntimeError(instructionIp, "Expected 0 arguments but got %d.", argCount);
+			return false;
+		}
 		return true;
 	}
 
@@ -1259,6 +1364,31 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 		frames[frameCount++] = newFrame;
 	}
 
+	return true;
+}
+
+bool VM::Invoke(VMValue receiver, VMValue method, int argCount, const uint8_t* instructionIp)
+{
+	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(method.value);
+	int expectedArgCount = closureValue->Arity();
+	if (argCount != expectedArgCount)
+	{
+		RuntimeError(instructionIp, "Expected %d arguments but got %d.", expectedArgCount, argCount);
+		return false;
+	}
+
+	if (frameCount >= FRAMES_MAX)
+	{
+		RuntimeError(instructionIp, "Stack overflow: too many nested calls.");
+		return false;
+	}
+
+	CallFrame newFrame;
+	newFrame.closure = method;
+	newFrame.ip = newFrame.GetChunk()->code;
+	newFrame.slots = stackTop - argCount - 1;
+	newFrame.slots[0] = receiver;
+	frames[frameCount++] = newFrame;
 	return true;
 }
 

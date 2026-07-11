@@ -42,6 +42,8 @@ enum OpCode
 	OP_JUMP,
 	OP_LOOP,
 	OP_CALL,
+	OP_INVOKE,
+	OP_INVOKE_LONG,
 	OP_CLOSURE,
 	OP_GET_UPVALUE,
 	OP_SET_UPVALUE,
@@ -144,8 +146,10 @@ struct InlineCache
 	struct Entry
 	{
 		void* klass;
+		uint32_t slotNum;
 		uint32_t slot;
-	} enries[ENTRY_COUNT];
+		VMValue method;
+	} entries[ENTRY_COUNT];
 
 	uint32_t writeLocation;
 
@@ -154,33 +158,36 @@ struct InlineCache
 	{
 		for (uint32_t i = 0; i < ENTRY_COUNT; ++i)
 		{
-			enries[i].klass = nullptr;
-			enries[i].slot = -1;
+			entries[i].klass = nullptr;
+			entries[i].slotNum = 0;
+			entries[i].slot = -1;
+			entries[i].method = VMValue();
 		}
 	}
 
-	bool Match(void* inKlass, uint32_t& outSlot) const
+	const Entry* Match(void* inKlass, uint32_t inSlotNum) const
 	{
 		if (!inKlass)
 		{
-			return false;
+			return nullptr;
 		}
 		for (uint32_t i = 0; i < ENTRY_COUNT; ++i)
 		{
 			uint32_t index = (ENTRY_COUNT + writeLocation - 1 - i) % ENTRY_COUNT;
-			if (enries[index].klass == inKlass)
+			if (entries[index].klass == inKlass && entries[index].slotNum == inSlotNum)
 			{
-				outSlot = enries[index].slot;
-				return true;
+				return &entries[index];
 			}
 		}
-		return false;
+		return nullptr;
 	}
 
-	void Update(void* inKlass, uint32_t inSlot)
+	void Update(void* inKlass, uint32_t inSlotNum, uint32_t inSlot, VMValue inMethod)
 	{
-		enries[writeLocation].klass = inKlass;
-		enries[writeLocation].slot = inSlot;
+		entries[writeLocation].klass = inKlass;
+		entries[writeLocation].slotNum = inSlotNum;
+		entries[writeLocation].slot = inSlot;
+		entries[writeLocation].method = inMethod;
 		writeLocation = (writeLocation + 1) % ENTRY_COUNT;
 	}
 };
@@ -239,6 +246,8 @@ struct Chunk
 	int32_t PropertyInstruction(const char* name, int32_t offset);
 	int32_t PropertyLongInstruction(const char* name, int32_t offset);
 	int32_t ClosureInstruction(const char* name, int32_t offset, int32_t indent);
+	int32_t InvokeInstruction(const char* name, int32_t offset);
+	int32_t InvokeLongInstruction(const char* name, int32_t offset);
 
 	uint32_t AppendInlineCache();
 	InlineCache& GetInlineCache(uint32_t cacheIndex);

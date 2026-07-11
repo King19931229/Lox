@@ -10,6 +10,7 @@ class Compiler
 		TYPE_SCRIPT,
 		TYPE_FUNCTION,
 		TYPE_METHOD,
+		TYPE_INITIALIZER,
 	};
 protected:
 public:
@@ -383,6 +384,7 @@ private:
 	}
 	void EmitConstant(VMValue value);
 	void EmitPropertyAccess(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint32_t cacheIndex);
+	void EmitInvoke(uint32_t nameConstant, uint8_t argCount, uint32_t cacheIndex);
 	Chunk* CurrentChunk();
 
 	// --- Variable Helpers ---

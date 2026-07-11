@@ -671,6 +671,28 @@ void TestUnit::RunVMTest()
 		{ "fun makePrinter() { fun inner() { return \"returned\"; } return inner; } var printer = makePrinter(); print printer();", "returned\n" },
 		{ "fun left() { print \"left\"; return 2; } fun right() { print \"right\"; return 3; } fun add(a, b) { return a + b; } print add(left(), right());", "left\nright\n5\n" },
 
+		// Classes, methods, initializers, and bound-method calls.
+		{ "class Greeter { fun greet() { print \"hello\"; } } var g = Greeter(); g.greet();", "hello\n" },
+		{ "class Calculator { fun add(a, b) { return a + b; } } var c = Calculator(); print c.add(2, 3);", "5\n" },
+		{ "class Counter { fun increment() { this.value = this.value + 1; } } var c = Counter(); c.value = 0; c.increment(); c.increment(); print c.value;", "2\n" },
+		{ "class Point { fun init(x, y) { this.x = x; this.y = y; } } var p = Point(3, 4); print p.x; print p.y;", "3\n4\n" },
+		{ "class Marker { fun init() { this.ready = true; } } print Marker().ready;", "true\n" },
+		{ "class Box { fun init(value) { this.value = value; } } var b = Box(7); print b; print b.value;", "<instance of Box>\n7\n" },
+		{ "class Thing { fun self() { return this; } } var thing = Thing(); print thing.self();", "<instance of Thing>\n" },
+		{ "class Adder { fun add(value) { return this.base + value; } } var a = Adder(); a.base = 10; var add = a.add; print add(5);", "15\n" },
+		{ "fun callback(value) { return value * 2; } class Box { } var b = Box(); b.callback = callback; print b.callback(21);", "42\n" },
+		{ "class Box { } var b = Box(); b.value = 123; b.value();", "Can't call a non-function value.", INTERPRET_RUNTIME_ERROR },
+		{ "fun apply(fn, value) { return fn(value); } class Doubler { fun double(value) { return value * 2; } } var d = Doubler(); print apply(d.double, 21);", "42\n" },
+		{ "class Box { fun value() { return \"method\"; } } fun getValue(box) { return box.value; } var b = Box(); var method = getValue(b); print method(); b.value = \"field\"; print getValue(b);", "method\nfield\n" },
+		{ "class Calculator { fun add(a, b) { return a + b; } fun twice(a, b) { return this.add(a, b) * 2; } } print Calculator().twice(2, 3);", "10\n" },
+		{ "class Box { fun get() { return this.value; } } var a = Box(); var b = Box(); a.value = \"a\"; b.value = \"b\"; var getA = a.get; var getB = b.get; print getA(); print getB();", "a\nb\n" },
+		{ "class Counter { fun makeGetter() { fun get() { return this.value; } return get; } } var c = Counter(); c.value = 9; var get = c.makeGetter(); print get();", "9\n" },
+		{ "class Walker { fun down(n) { if (n > 0) { print n; this.down(n - 1); } } } Walker().down(3);", "3\n2\n1\n" },
+		{ "class Point { fun init(x) { this.x = x; } fun move(delta) { this.x = this.x + delta; return this; } } var p = Point(1); print p.move(4).x;", "5\n" },
+		{ "class Empty { } Empty(1);", "Expected 0 arguments but got 1.", INTERPRET_RUNTIME_ERROR },
+		{ "class NeedsArgument { fun init(value) { this.value = value; } } NeedsArgument();", "Expected 1 arguments but got 0.", INTERPRET_RUNTIME_ERROR },
+		{ "class Greeter { fun greet() { } } var g = Greeter(); g.greet(1);", "Expected 0 arguments but got 1.", INTERPRET_RUNTIME_ERROR },
+
 		// VM: while / for loops
 		// VM: while / for loops (including aggressive break/nested cases)
 		{ "var i = 0; while (i < 3) { print i; i = i + 1; }", "0\n1\n2\n" },

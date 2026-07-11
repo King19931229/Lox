@@ -274,12 +274,16 @@ int main(int argc, char* argv[])
 	vm.Interpret(R"(
 	class Foo 
 	{
+		fun init(v)
+		{
+			this.v = v;
+		}
 		fun func(v0, v1)
 		{
 			return v0 + v1 + this.v;
 		}
 	}
-	var foo = Foo();
+	var foo = Foo(5);
 	foo.v = 3;
 	print foo.func(1, 2);	
 	)");

@@ -452,7 +452,12 @@ void Compiler::Method()
 	Consume(FUN, "Expect 'fun' before method name.");
 	Consume(IDENTIFIER, "Except method name.");
 	uint32_t nameConstant = IdentifierConstant(parser.previous);
-	Function(TYPE_METHOD, parser.previous.lexeme);
+	FunctionType fnType = TYPE_METHOD;
+	if (parser.previous.lexeme == "init")
+	{
+		fnType = TYPE_INITIALIZER;
+	}
+	Function(fnType, parser.previous.lexeme);
 	if (nameConstant <= 0xFF)
 	{
 		EmitBytes(OP_METHOD, nameConstant);
@@ -684,6 +689,10 @@ void Compiler::ReturnStatement()
 	{
 		Error("Can't return from top-level code.");
 	}
+	else if(type == TYPE_INITIALIZER)
+	{
+		Error("Can't return a value from an initializer.");
+	}
 	if (Match(SEMICOLON))
 	{
 		// A bare return becomes an implicit nil return value.
@@ -781,7 +790,16 @@ VMValue Compiler::EndCompiler()
 {
 	if (CurrentChunk()->GetSize() == 0 || CurrentChunk()->code[CurrentChunk()->GetSize() - 1] != OP_RETURN)
 	{
-		EmitByte(OP_NIL);
+		if (type == TYPE_INITIALIZER)
+		{
+			// Implicitly return "this" for methods that don't explicitly return a value.
+			EmitBytes(OP_GET_LOCAL, 0);
+		}
+		else
+		{
+			// Implicitly return nil for functions that don't explicitly return a value.
+			EmitByte(OP_NIL);
+		}
 		EmitByte(OP_RETURN);
 	}
 #ifdef DEBUG_PRINT_CODE	
@@ -1081,6 +1099,25 @@ void Compiler::EmitPropertyAccess(uint8_t op, uint8_t opLong, uint32_t nameConst
 	}
 }
 
+void Compiler::EmitInvoke(uint32_t nameConstant, uint8_t argCount, uint32_t cacheIndex)
+{
+	if (nameConstant <= 0xFF && cacheIndex <= 0xFF)
+	{
+		EmitBytes(OP_INVOKE, (uint8_t)nameConstant, argCount, (uint8_t)cacheIndex);
+	}
+	else
+	{
+		EmitBytes(OP_INVOKE_LONG,
+			(uint8_t)((nameConstant >> 16) & 0xFF),
+			(uint8_t)((nameConstant >> 8) & 0xFF),
+			(uint8_t)(nameConstant & 0xFF),
+			argCount,
+			(uint8_t)((cacheIndex >> 16) & 0xFF),
+			(uint8_t)((cacheIndex >> 8) & 0xFF),
+			(uint8_t)(cacheIndex & 0xFF));
+	}
+}
+
 void Compiler::Dot(bool canAssign)
 {
 	Consume(IDENTIFIER, "Expect property name after '.'.");
@@ -1093,7 +1130,15 @@ void Compiler::Dot(bool canAssign)
 	}
 	else
 	{
-		EmitPropertyAccess(OP_GET_PROPERTY, OP_GET_PROPERTY_LONG, nameConstant, cacheIndex);
+		if (Match(LEFT_PAREN))
+		{
+			uint8_t argCount = ArgumentList();
+			EmitInvoke(nameConstant, argCount, cacheIndex);
+		}
+		else
+		{
+			EmitPropertyAccess(OP_GET_PROPERTY, OP_GET_PROPERTY_LONG, nameConstant, cacheIndex);
+		}
 	}
 }
 
