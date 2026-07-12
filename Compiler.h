@@ -359,7 +359,7 @@ private:
 	void Equality(bool);
 	void And(bool);
 	void Or(bool);
-	void NamedVariable(bool);
+	void Variable(bool);
 	void Call(bool);
 	void Dot(bool canAssign);
 	void Bracket(bool canAssign);
@@ -391,8 +391,9 @@ private:
 	uint32_t ParseVariable(const std::string& errorMessage, bool isFinal);
 	uint32_t MakeConstant(VMValue value);
 	uint32_t IdentifierConstant(const Token& name);
-	void DefineVariable(uint32_t global, bool isFinal);
+	void DefineVariable(uint32_t nameConstant, bool isFinal);
 	void DeclareVariable(bool isFinal);
+	void NamedVariable(const Token& name, bool canAssign);
 	void AddLocal(const Token& name, bool isFinal);
 	void MarkInitialize();
 	int32_t ResolveLocal(const Token& name);

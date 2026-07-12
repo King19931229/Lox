@@ -272,7 +272,14 @@ int main(int argc, char* argv[])
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
-	class Foo 
+	class Boo
+	{
+		fun basefunc(v0, v1)
+		{
+			return v0 * v1;
+		}
+	}
+	class Foo < Boo
 	{
 		fun init(v)
 		{

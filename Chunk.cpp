@@ -411,6 +411,8 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 			return InvokeInstruction("OP_INVOKE", offset);
 		case OP_INVOKE_LONG:
 			return InvokeLongInstruction("OP_INVOKE_LONG", offset);
+		case OP_INHERIT:
+			return SimpleInstruction("OP_INHERIT", offset);
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return offset + 1;

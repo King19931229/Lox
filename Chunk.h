@@ -57,6 +57,7 @@ enum OpCode
 	OP_SET_INDEX,
 	OP_METHOD,
 	OP_METHOD_LONG,
+	OP_INHERIT,
 	OP_RETURN,
 };
 

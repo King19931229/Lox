@@ -422,18 +422,34 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 
 void Compiler::ClassDeclaration()
 {
-	Consume(IDENTIFIER, "Expect class name.");
-	uint32_t nameConstant = IdentifierConstant(parser.previous);
-	DeclareVariable(false);
-	// Push the class on the stack
-	EmitBytes(OP_CLASS, nameConstant);
-	DefineVariable(nameConstant, false);
-
 	ClassCompiler classCompiler;
 	classCompiler.enclosing = currentClass;
 	currentClass = &classCompiler;
 
-	NamedVariable(false);
+	Consume(IDENTIFIER, "Expect class name.");
+	uint32_t nameConstant = IdentifierConstant(parser.previous);
+
+	DeclareVariable(false);
+	// Push the class on the stack
+	EmitBytes(OP_CLASS, nameConstant);
+	// Mark the class on the stack as a variable
+	DefineVariable(nameConstant, false);
+
+	Token className = parser.previous;
+
+	// Handle super class if present
+	if (Match(LESS))
+	{
+		Consume(IDENTIFIER, "Expect superclass name.");
+		Token superclassName = parser.previous;
+		NamedVariable(superclassName, false);
+		NamedVariable(className, false);
+		EmitByte(OP_INHERIT);
+	}
+
+	// Push the class on the stack so methods can access it.
+	NamedVariable(className, false);
+
 	Consume(LEFT_BRACE, "Expect '{' before class body.");
 	// Push the class on the stack so methods can access it.
 	while (!Check(RIGHT_BRACE) && !Check(END_OF_FILE))
@@ -856,7 +872,7 @@ void Compiler::This(bool)
 	{
 		Error("Can't use 'this' outside of a method.");
 	}
-	NamedVariable(false);
+	Variable(false);
 }
 
 void Compiler::String(bool /*canAssign*/)
@@ -982,10 +998,15 @@ void Compiler::Or(bool)
 	PatchJump(endJump);
 }
 
-void Compiler::NamedVariable(bool canAssign)
+void Compiler::Variable(bool canAssign)
+{
+	NamedVariable(parser.previous, canAssign);
+}
+
+void Compiler::NamedVariable(const Token& name, bool canAssign)
 {
 	OpCode getOp = OP_NIL, setOp = OP_NIL;
-	int index = ResolveLocal(parser.previous);
+	int index = ResolveLocal(name);
 	bool isFinal = false;
 	uint32_t arg = 0;
 
@@ -998,7 +1019,7 @@ void Compiler::NamedVariable(bool canAssign)
 	}
 	else
 	{
-		index = ResolveUpvalue(parser.previous);
+		index = ResolveUpvalue(name);
 		if (index != -1)
 		{
 			arg = (uint32_t)index;
@@ -1012,7 +1033,7 @@ void Compiler::NamedVariable(bool canAssign)
 		}
 		else
 		{
-			arg = IdentifierConstant(parser.previous);
+			arg = IdentifierConstant(name);
 			isFinal = globalFinals[arg];
 			getOp = arg <= 0xFF ? OP_GET_GLOBAL : OP_GET_GLOBAL_LONG;
 			setOp = arg <= 0xFF ? OP_SET_GLOBAL : OP_SET_GLOBAL_LONG;
@@ -1234,7 +1255,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[GREATER_EQUAL] = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
 		rules[LESS]          = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
 		rules[LESS_EQUAL]    = { nullptr,             &Compiler::Binary,  PREC_COMPARISON };
-		rules[IDENTIFIER]    = { &Compiler::NamedVariable, nullptr,       PREC_NONE };
+		rules[IDENTIFIER]    = { &Compiler::Variable, nullptr,			  PREC_NONE };
 		rules[STRING]        = { &Compiler::String,   nullptr,            PREC_NONE };
 		rules[NUMBER]        = { &Compiler::Number,   nullptr,            PREC_NONE };
 		rules[AND]           = { nullptr,             &Compiler::And,     PREC_AND };
@@ -1317,7 +1338,7 @@ uint32_t Compiler::IdentifierConstant(const Token& name)
 	return MakeConstant(VM::Create(StringValue::CreateRaw(name.lexeme)));
 }
 
-void Compiler::DefineVariable(uint32_t global, bool isFinal)
+void Compiler::DefineVariable(uint32_t nameConstant, bool isFinal)
 {
 	// Define a local variable. Mark it defined at this scope depth and emit no bytecode.
 	if (scopeDepth > 0)
@@ -1328,19 +1349,19 @@ void Compiler::DefineVariable(uint32_t global, bool isFinal)
 	}
 
 	// Define a global variable. Emit bytecode to define it at the top level.
-	if (global <= 0xFF)
+	if (nameConstant <= 0xFF)
 	{
-		EmitBytes(OP_DEFINE_GLOBAL, (uint8_t)global);
+		EmitBytes(OP_DEFINE_GLOBAL, (uint8_t)nameConstant);
 	}
 	else
 	{
 		EmitBytes(OP_DEFINE_GLOBAL_LONG,
-			(uint8_t)((global >> 16) & 0xFF),
-			(uint8_t)((global >> 8) & 0xFF),
-			(uint8_t)(global & 0xFF));
+			(uint8_t)((nameConstant >> 16) & 0xFF),
+			(uint8_t)((nameConstant >> 8) & 0xFF),
+			(uint8_t)(nameConstant & 0xFF));
 	}
 
-	globalFinals[global] = isFinal;
+	globalFinals[nameConstant] = isFinal;
 }
 
 void Compiler::DeclareVariable(bool isFinal)

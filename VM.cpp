@@ -1234,7 +1234,14 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				klass->methods[static_cast<StringValue*>(nameValue.value)->value] = methodValue;
+				break;
 			}
+			case OP_INHERIT:
+			{
+				VMValue classValue = Pop();
+				VMValue superclassValue = Pop();
+				break;
+			}				
 		}
 	}
 
