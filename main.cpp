@@ -287,12 +287,12 @@ int main(int argc, char* argv[])
 		}
 		fun func(v0, v1)
 		{
-			return v0 + v1 + this.v;
+			return v0 + v1 + super.basefunc(v0, v1) + this.v;
 		}
 	}
 	var foo = Foo(5);
 	foo.v = 3;
-	print foo.func(1, 2);	
+	print foo.func(1, 2);
 	)");
 	vm.Free();
 #endif

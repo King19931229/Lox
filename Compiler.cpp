@@ -93,6 +93,21 @@ uint32_t Compiler::VMClassValue::GetOrCreateSlot(const std::string& fieldName)
 	return fieldToSlot[fieldName] = slotNum++;
 }
 
+VMValue Compiler::VMClassValue::FindMethod(const std::string& methodName) const
+{
+	auto it = methods.find(methodName);
+	if (it != methods.end())
+	{
+		return it->second;
+	}
+	if (superClass.value)
+	{
+		VMClassValue* superClassObj = static_cast<VMClassValue*>(superClass.value);
+		return superClassObj->FindMethod(methodName);
+	}
+	return VMValue();
+}
+
 void Compiler::VMInstanceValue::SetField(uint32_t slotIndex, VMValue value)
 {
 	auto NextPowOfTwo = [](uint32_t value)
@@ -162,7 +177,7 @@ void Compiler::Init(FunctionType inType, const std::string& name)
 	// The first local slot is reserved for internal use
 	Local local;
 	local.depth = 0;
-	if (inType != TYPE_FUNCTION)
+	if (inType == TYPE_METHOD || inType == TYPE_INITIALIZER)
 	{
 		// The first local is always "this" for methods, even if it's not used.
 		local.name.lexeme = "this";
@@ -404,7 +419,7 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 
 	EmitConstant(fn);
 	EmitByte(OP_CLOSURE);
-	if (fnType == TYPE_FUNCTION)
+	if (fnType != TYPE_SCRIPT)
 	{
 		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(fn.value);
 		EmitByte(fnValue->upvalueCount);
@@ -437,14 +452,27 @@ void Compiler::ClassDeclaration()
 
 	Token className = parser.previous;
 
+	currentClass->hasSuperclass = false;
 	// Handle super class if present
 	if (Match(LESS))
 	{
 		Consume(IDENTIFIER, "Expect superclass name.");
 		Token superclassName = parser.previous;
 		NamedVariable(superclassName, false);
+
+		// Create a new scope for super for each class, so that super is only accessible within the class body.
+		BeginScope();
+		AddLocal(Token(IDENTIFIER, "super", superclassName.line, superclassName.column), false);
+		DefineVariable(-1, false);
+
 		NamedVariable(className, false);
+		if (superclassName.lexeme == className.lexeme)
+		{
+			Error("A class can't inherit from itself.");
+			return;
+		}
 		EmitByte(OP_INHERIT);
+		currentClass->hasSuperclass = true;
 	}
 
 	// Push the class on the stack so methods can access it.
@@ -459,6 +487,11 @@ void Compiler::ClassDeclaration()
 	Consume(RIGHT_BRACE, "Expect '}' after class body.");
 	// Pop the class after methods are defined.
 	EmitByte(OP_POP);
+
+	if (currentClass->hasSuperclass)
+	{
+		EndScope();
+	}
 
 	currentClass = currentClass->enclosing;
 }
@@ -875,6 +908,34 @@ void Compiler::This(bool)
 	Variable(false);
 }
 
+void Compiler::Super(bool)
+{
+	if (!currentClass)
+	{
+		Error("Can't use 'super' outside of a class.");
+	}
+	else if (!currentClass->hasSuperclass)
+	{
+		Error("Can't use 'super' in a class with no superclass.");
+	}
+	Consume(DOT, "Expect '.' after 'super'.");
+	Consume(IDENTIFIER, "Expect superclass method name.");
+	uint32_t methodConstant = IdentifierConstant(parser.previous);
+	uint32_t cacheIndex = CurrentChunk()->AppendInlineCache();
+	NamedVariable(Token(IDENTIFIER, "this", parser.previous.line, parser.previous.column), false);
+	if (Match(LEFT_PAREN))
+	{
+		uint32_t argCount = ArgumentList();
+		NamedVariable(Token(IDENTIFIER, "super", parser.previous.line, parser.previous.column), false);
+		EmitInvoke(OP_SUPER_INVOKE, OP_SUPER_INVOKE_LONG, methodConstant, argCount, cacheIndex);
+	}
+	else
+	{
+		NamedVariable(Token(IDENTIFIER, "super", parser.previous.line, parser.previous.column), false);
+		EmitPropertyAccess(OP_GET_SUPER, OP_GET_SUPER_LONG, methodConstant, cacheIndex);
+	}
+}
+
 void Compiler::String(bool /*canAssign*/)
 {
 	const std::string& lexeme = parser.previous.lexeme;
@@ -1120,15 +1181,15 @@ void Compiler::EmitPropertyAccess(uint8_t op, uint8_t opLong, uint32_t nameConst
 	}
 }
 
-void Compiler::EmitInvoke(uint32_t nameConstant, uint8_t argCount, uint32_t cacheIndex)
+void Compiler::EmitInvoke(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint8_t argCount, uint32_t cacheIndex)
 {
 	if (nameConstant <= 0xFF && cacheIndex <= 0xFF)
 	{
-		EmitBytes(OP_INVOKE, (uint8_t)nameConstant, argCount, (uint8_t)cacheIndex);
+		EmitBytes(op, (uint8_t)nameConstant, argCount, (uint8_t)cacheIndex);
 	}
 	else
 	{
-		EmitBytes(OP_INVOKE_LONG,
+		EmitBytes(opLong,
 			(uint8_t)((nameConstant >> 16) & 0xFF),
 			(uint8_t)((nameConstant >> 8) & 0xFF),
 			(uint8_t)(nameConstant & 0xFF),
@@ -1154,7 +1215,7 @@ void Compiler::Dot(bool canAssign)
 		if (Match(LEFT_PAREN))
 		{
 			uint8_t argCount = ArgumentList();
-			EmitInvoke(nameConstant, argCount, cacheIndex);
+			EmitInvoke(OP_INVOKE, OP_INVOKE_LONG, nameConstant, argCount, cacheIndex);
 		}
 		else
 		{
@@ -1269,7 +1330,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[OR]            = { nullptr,             &Compiler::Or,      PREC_OR };
 		rules[PRINT]         = { nullptr,             nullptr,            PREC_NONE };
 		rules[RETURN]        = { nullptr,             nullptr,            PREC_NONE };
-		rules[SUPER]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[SUPER]         = { &Compiler::Super,    nullptr,            PREC_NONE };
 		rules[THIS]          = { &Compiler::This,     nullptr,            PREC_NONE };
 		rules[TRUE]          = { &Compiler::Literal,  nullptr,            PREC_NONE };
 		rules[VAR]           = { nullptr,             nullptr,            PREC_NONE };

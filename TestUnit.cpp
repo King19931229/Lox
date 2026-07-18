@@ -636,6 +636,17 @@ void TestUnit::RunVMTest()
 		return source;
 	};
 
+	auto MakeLongSuperInvokeSource = []()
+	{
+		std::string source = "class Base { fun target() { return \"base\"; } } class Derived < Base { fun test() { ";
+		for (int i = 0; i < 260; ++i)
+		{
+			source += "this.p" + std::to_string(i) + " = " + std::to_string(i) + "; ";
+		}
+		source += "return super.target(); } } print Derived().test();";
+		return source;
+	};
+
 	const std::vector<TestCase> testCases = {
 		// 基础常量与打印
 		{ "print 1;", "1\n" },
@@ -676,6 +687,10 @@ void TestUnit::RunVMTest()
 		{ "class Calculator { fun add(a, b) { return a + b; } } var c = Calculator(); print c.add(2, 3);", "5\n" },
 		{ "class Counter { fun increment() { this.value = this.value + 1; } } var c = Counter(); c.value = 0; c.increment(); c.increment(); print c.value;", "2\n" },
 		{ "class Point { fun init(x, y) { this.x = x; this.y = y; } } var p = Point(3, 4); print p.x; print p.y;", "3\n4\n" },
+		{ "class Base { fun add(value) { this.value = this.value + value; return this.value; } } class Derived < Base { fun add(value) { return super.add(value) + 10; } } var first = Derived(); var second = Derived(); first.value = 0; second.value = 100; print first.add(5); print first.add(5); print second.add(1);", "15\n20\n111\n" },
+		{ "class A { fun name() { return \"A\"; } } class B < A { fun name() { return super.name() + \"B\"; } } class C < B { fun name() { return super.name() + \"C\"; } } print C().name();", "ABC\n" },
+		{ "class Base { fun greet() { return this.name; } } class Derived < Base { fun getBaseGreet() { var greet = super.greet; return greet; } } var first = Derived(); var second = Derived(); first.name = \"first\"; second.name = \"second\"; var firstGreet = first.getBaseGreet(); var secondGreet = second.getBaseGreet(); print firstGreet(); print secondGreet();", "first\nsecond\n" },
+		{ MakeLongSuperInvokeSource(), "base\n" },
 		{ "class Marker { fun init() { this.ready = true; } } print Marker().ready;", "true\n" },
 		{ "class Box { fun init(value) { this.value = value; } } var b = Box(7); print b; print b.value;", "<instance of Box>\n7\n" },
 		{ "class Thing { fun self() { return this; } } var thing = Thing(); print thing.self();", "<instance of Thing>\n" },

@@ -27,7 +27,6 @@ public:
 		VM_FUNC_FUNCTION,
 		VM_FUNC_NATIVE,
 		VM_FUNC_CLOSURE,
-		VM_FUNC_CLASS_INIT,
 		VM_FUNC_METHOD,
 	};
 	
@@ -150,10 +149,10 @@ public:
 		std::unordered_map<std::string, VMValue> methods;
 		uint32_t slotNum;
 		VMValue superClass;
-		explicit VMClassValue(const std::string& inName, VMValue inSuperClass = VMValue())
+		explicit VMClassValue(const std::string& inName)
 			: name(inName)
 			, slotNum(0)
-			, superClass(inSuperClass)
+			, superClass(VMValue(nullptr))
 		{
 			this->type = TYPE_CLASS;
 		}
@@ -161,10 +160,11 @@ public:
 		virtual size_t Size() const override  { return sizeof(*this) + name.capacity(); }
 		uint32_t GetSlot(const std::string& fieldName) const;
 		uint32_t GetOrCreateSlot(const std::string& fieldName);
+		VMValue FindMethod(const std::string& methodName) const;
 		void Blacken(VM& vm) override;
 	};
 
-	struct VMInstanceValue : public VMFunctionBase
+	struct VMInstanceValue : public Value
 	{
 		VMValue classValue;
 		std::vector<VMValue> fields;
@@ -187,9 +187,6 @@ public:
 		void SetField(uint32_t slotIndex, VMValue value);
 		VMValue GetField(uint32_t slotIndex);
 		void Blacken(VM& vm) override;
-
-		virtual int Arity() const override { return 0; }
-		virtual VMFunctionType GetType() const override { return VM_FUNC_CLASS_INIT; }
 	};
 
 	struct BoundMethodValue : public VMFunctionBase
@@ -310,6 +307,7 @@ private:
 	struct ClassCompiler
 	{
 		ClassCompiler* enclosing = nullptr;
+		bool hasSuperclass = false;
 	};
 	ClassCompiler* currentClass = nullptr;
 
@@ -364,6 +362,7 @@ private:
 	void Dot(bool canAssign);
 	void Bracket(bool canAssign);
 	void This(bool);
+	void Super(bool);
 
 	// --- Token Helpers ---
 	Token ScanToken();
@@ -384,7 +383,7 @@ private:
 	}
 	void EmitConstant(VMValue value);
 	void EmitPropertyAccess(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint32_t cacheIndex);
-	void EmitInvoke(uint32_t nameConstant, uint8_t argCount, uint32_t cacheIndex);
+	void EmitInvoke(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint8_t argCount, uint32_t cacheIndex);
 	Chunk* CurrentChunk();
 
 	// --- Variable Helpers ---

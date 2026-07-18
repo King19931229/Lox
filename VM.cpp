@@ -993,11 +993,7 @@ InterpretResult VM::Run()
 				else
 				{
 					slot = klass->GetSlot(propertyName);
-					auto methodIt = klass->methods.find(propertyName);
-					if (methodIt != klass->methods.end())
-					{
-						method = methodIt->second;
-					}
+					method = klass->FindMethod(propertyName);
 					if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
 					{
 						RuntimeError(IP, "Undefined method '%s'.", propertyName.c_str());
@@ -1070,11 +1066,7 @@ InterpretResult VM::Run()
 				else
 				{
 					slot = klass->GetSlot(propertyName);
-					auto methodIt = klass->methods.find(propertyName);
-					if (methodIt != klass->methods.end())
-					{
-						method = methodIt->second;
-					}
+					method = klass->FindMethod(propertyName);
 					cache.Update(klass, klass->slotNum, slot, method);
 				}
 
@@ -1239,9 +1231,134 @@ InterpretResult VM::Run()
 			case OP_INHERIT:
 			{
 				VMValue classValue = Pop();
-				VMValue superclassValue = Pop();
+				VMValue superclassValue = Peek(0);
+				if (classValue.value == nullptr || classValue.value->type != TYPE_CLASS)
+				{
+					RuntimeError(IP, "Can only inherit from a class.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				if (superclassValue.value == nullptr || superclassValue.value->type != TYPE_CLASS)
+				{
+					RuntimeError(IP, "Superclass must be a class.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				static_cast<Compiler::VMClassValue*>(classValue.value)->superClass = superclassValue;
 				break;
-			}				
+			}
+			case OP_GET_SUPER:
+			case OP_GET_SUPER_LONG:
+			{
+				VMValue nameValue;
+				if (opCode == OP_GET_SUPER)
+					nameValue = READ_CONSTANT();
+				else
+					nameValue = READ_LONG_CONSTANT();
+
+				uint32_t cacheIndex = (opCode == OP_GET_SUPER) ? READ_BYTE() : READ_THREE_BYTE();
+
+				VMValue superclassValue = Pop();
+				if (superclassValue.value == nullptr || superclassValue.value->type != TYPE_CLASS)
+				{
+					RuntimeError(IP, "Superclass must be a class.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				VMValue instance = Pop();
+				if (instance.value == nullptr || instance.value->type != TYPE_INSTANCE)
+				{
+					RuntimeError(IP, "Only instances have methods.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(superclassValue.value);
+				const std::string& methodName = static_cast<StringValue*>(nameValue.value)->value;
+
+				InlineCache& cache = frames[frameCount - 1].GetChunk()->GetInlineCache(cacheIndex);
+				uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
+
+				VMValue method;
+				const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
+				if (entry)
+				{
+					slot = entry->slot;
+					method = entry->method;
+				}
+				else
+				{
+					slot = klass->GetSlot(methodName);
+					method = klass->FindMethod(methodName);
+					if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
+					{
+						RuntimeError(IP, "Undefined method '%s' in superclass.", methodName.c_str());
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					cache.Update(klass, klass->slotNum, slot, method);
+				}
+				if (!method.value)
+				{					
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue boundMethod = VM::Create(new Compiler::BoundMethodValue(instance, method));
+				Push(boundMethod);
+				break;
+			}
+			case OP_SUPER_INVOKE:
+			case OP_SUPER_INVOKE_LONG:
+			{
+				VMValue nameValue;
+				if (opCode == OP_SUPER_INVOKE)
+					nameValue = READ_CONSTANT();
+				else
+					nameValue = READ_LONG_CONSTANT();
+				uint8_t argCountValue = READ_BYTE();
+				uint32_t cacheIndex = (opCode == OP_SUPER_INVOKE) ? READ_BYTE() : READ_THREE_BYTE();
+
+				VMValue superclassValue = Pop();
+				if (superclassValue.value == nullptr || superclassValue.value->type != TYPE_CLASS)
+				{
+					RuntimeError(IP, "Superclass must be a class.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				VMValue instance = stackTop[-argCountValue - 1];
+				if (instance.value == nullptr || instance.value->type != TYPE_INSTANCE)
+				{
+					RuntimeError(IP, "Only instances have methods.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(superclassValue.value);
+				const std::string& methodName = static_cast<StringValue*>(nameValue.value)->value;
+
+				InlineCache& cache = frames[frameCount - 1].GetChunk()->GetInlineCache(cacheIndex);
+
+				uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
+				VMValue method;
+				const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
+				if (entry)
+				{
+					slot = entry->slot;
+					method = entry->method;
+				}
+				else
+				{
+					slot = klass->GetSlot(methodName);
+					method = klass->FindMethod(methodName);
+					if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
+					{
+						RuntimeError(IP, "Undefined method '%s'.", methodName.c_str());
+						return INTERPRET_RUNTIME_ERROR;
+					}
+					cache.Update(klass, klass->slotNum, slot, method);
+				}
+				frames[frameCount - 1].ip = IP;
+				if (!Invoke(instance, method, argCountValue, IP))
+				{
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				IP = frames[frameCount - 1].ip;
+				break;
+			}
 		}
 	}
 
