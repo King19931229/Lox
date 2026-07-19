@@ -1,7 +1,6 @@
 #pragma once
 #include "Chunk.h"
 #include "Compiler.h"
-#include <cstdarg>
 #include <unordered_map>
 #include <vector>
 
@@ -19,6 +18,8 @@ struct CallFrame
 	VMValue closure;
 	uint8_t* ip;
 	VMValue* slots;
+
+	VMValue inner;
 
 	inline Chunk* GetChunk()
 	{
@@ -53,6 +54,20 @@ protected:
 			: location(inLocation)
 		{
 			type = TYPE_UPVALUE;
+		}
+		void Blacken(VM& vm) override;
+		size_t Size() const override { return sizeof(*this); }
+	};
+
+	struct InnerValue : public Value
+	{
+		VMValue closure;
+		VMValue nextInner;
+		InnerValue(VMValue inClosure, VMValue inNextInner)
+			: closure(inClosure)
+			, nextInner(inNextInner)
+		{
+			type = TYPE_INNER_VALUE;
 		}
 		void Blacken(VM& vm) override;
 		size_t Size() const override { return sizeof(*this); }
@@ -131,6 +146,7 @@ public:
 	// Call a function value with given argument count. Returns true on success.
 	bool Call(VMValue callee, int argCount, const uint8_t* instructionIp = nullptr);
 	bool Invoke(VMValue receiver, VMValue method, int argCount, const uint8_t* instructionIp = nullptr);
+	bool InvokeFromClass(VMValue classValue, VMValue receiver, const std::string& methodName, int argCount, uint32_t cacheIndex, const uint8_t* instructionIp = nullptr);
 	InterpretResult Interpret(VMValue function);
 	InterpretResult Interpret(const char* source);
 

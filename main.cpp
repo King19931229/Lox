@@ -2,8 +2,6 @@
 //
 #include "Lox.h"
 #include "TestUnit.h"
-#include "GenerateAST.h"
-#include "Interpreter.h"
 #include "Chunk.h"
 #include "VM.h"
 
@@ -268,15 +266,16 @@ void TestChunk()
 
 int main(int argc, char* argv[])
 {
-#if 1
+#if 0
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
 	class Boo
 	{
-		fun basefunc(v0, v1)
+		fun func(v0, v1)
 		{
-			return v0 * v1;
+			// return v0 * v1;
+			return inner(v0, v1);
 		}
 	}
 	class Foo < Boo
@@ -287,17 +286,17 @@ int main(int argc, char* argv[])
 		}
 		fun func(v0, v1)
 		{
-			return v0 + v1 + super.basefunc(v0, v1) + this.v;
+			return v0 + v1 + this.v;
 		}
 	}
 	var foo = Foo(5);
 	foo.v = 3;
-	print foo.func(1, 2);
+	print foo..func(1, 2);
 	)");
 	vm.Free();
 #endif
 
-#if 0
+#if 1
 	TestUnit::RunVMTest();
 #endif
 

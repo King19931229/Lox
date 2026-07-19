@@ -1,8 +1,6 @@
 #pragma once
 #include <memory>
 #include <string>
-#include <stdexcept>
-#include <iostream>
 #include "Lox.h" // Lox runtime error reporting interface
 
 enum ValueType
@@ -18,6 +16,7 @@ enum ValueType
 	// For upvalues captured by closures. Only useable in VM.
 	TYPE_UPVALUE,
 	TYPE_BOUND_METHOD,
+	TYPE_INNER_VALUE,
 	TYPE_ERROR // Error type
 };
 

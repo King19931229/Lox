@@ -1,5 +1,4 @@
 #include "VM.h"
-#include "Compiler.h"
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -33,6 +32,12 @@ void VM::UpvalueValue::Blacken(VM& vm)
 	{
 		vm.MarkValue(*location);
 	}
+}
+
+void VM::InnerValue::Blacken(VM& vm)
+{
+	vm.MarkValue(closure);
+	vm.MarkValue(nextInner);
 }
 
 void VM::PushCompilerRoot(Compiler* compiler)
@@ -849,6 +854,90 @@ InterpretResult VM::Run()
 				IP = frames[frameCount - 1].ip;
 				break;
 			}
+			case OP_ROOT_INVOKE:
+			case OP_ROOT_INVOKE_LONG:
+			{
+				VMValue nameValue = (opCode == OP_ROOT_INVOKE) ? READ_CONSTANT() : READ_LONG_CONSTANT();
+				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				{
+					RuntimeError(IP, "Method name must be a string.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				uint8_t argCountValue = READ_BYTE();
+				VMValue receiver = stackTop[-argCountValue - 1];
+				if (receiver.value == nullptr || receiver.value->type != TYPE_INSTANCE)
+				{
+					RuntimeError(IP, "Only instances have methods.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				const std::string& methodName = static_cast<StringValue*>(nameValue.value)->value;
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(receiver.value);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
+				std::vector<VMValue> methods;
+				Compiler::VMClassValue* current = klass;
+				while (current)
+				{
+					VMValue method = current->FindDirectMethod(methodName);
+					if (method.value)
+					{
+						methods.push_back(method);
+					}
+					current = current->superClass.value ? static_cast<Compiler::VMClassValue*>(current->superClass.value) : nullptr;
+				}
+
+				if (methods.empty())
+				{
+					RuntimeError(IP, "Undefined method '%s'.", methodName.c_str());
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				// methods is derived-to-base. Build the inner chain in the
+				// opposite direction so the base method sees the next derived method.
+				VMValue nextInner;
+				for (size_t i = 0; i + 1 < methods.size(); ++i)
+				{
+					nextInner = VM::Create(new InnerValue(methods[i], nextInner));
+					Push(nextInner);
+				}
+				stackTop -= (int32_t)(methods.size() - 1);
+
+				frames[frameCount - 1].ip = IP;
+				if (!Invoke(receiver, methods.back(), argCountValue, IP))
+				{
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				frames[frameCount - 1].inner = nextInner;
+				IP = frames[frameCount - 1].ip;
+				break;
+			}
+			case OP_INNER_INVOKE:
+			{
+				uint8_t argCountValue = READ_BYTE();
+				CallFrame* caller = &frames[frameCount - 1];
+				VMValue inner = caller->inner;
+				if (inner.value == nullptr)
+				{
+					RuntimeError(IP, "inner() can only be used during a root invocation.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				if (inner.value->type != TYPE_INNER_VALUE)
+				{
+					RuntimeError(IP, "Inner value expected for invocation.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				VMValue instance = stackTop[-argCountValue - 1];
+				InnerValue* innerValue = static_cast<InnerValue*>(inner.value);
+				caller->ip = IP;
+				if (!Invoke(instance, innerValue->closure, argCountValue, IP))
+				{
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				frames[frameCount - 1].inner = innerValue->nextInner;
+				IP = frames[frameCount - 1].ip;
+				break;
+			}
 			case OP_RETURN:
 			{
 				CallFrame* frame = &frames[frameCount - 1];
@@ -977,43 +1066,10 @@ InterpretResult VM::Run()
 				}
 
 				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
-
 				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
-				InlineCache& cache = frames[frameCount - 1].GetChunk()->GetInlineCache(cacheIndex);
-
-				uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
-				VMValue method;
-				const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
-				if (entry)
-				{
-					slot = entry->slot;
-					method = entry->method;
-				}
-				else
-				{
-					slot = klass->GetSlot(propertyName);
-					method = klass->FindMethod(propertyName);
-					if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
-					{
-						RuntimeError(IP, "Undefined method '%s'.", propertyName.c_str());
-						return INTERPRET_RUNTIME_ERROR;
-					}
-					cache.Update(klass, klass->slotNum, slot, method);
-				}
-
-				VMValue callee = slot != Compiler::VMClassValue::INVALID_SLOT ? instance->GetField(slot) : VMValue();
 				// Keep the caller IP up to date before either call path can push a frame.
 				frames[frameCount - 1].ip = IP;
-				if (!callee.value && !method.value)
-				{
-					RuntimeError(IP, "Undefined method '%s'.", propertyName.c_str());
-					return INTERPRET_RUNTIME_ERROR;
-				}
-				bool invoked = callee.value
-					? Call(callee, argCountValue, IP)
-					: Invoke(instance, method, argCountValue, IP);
-				if (!invoked)
+				if (!InvokeFromClass(instance->classValue, object, propertyName, argCountValue, cacheIndex, IP))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -1327,32 +1383,9 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(superclassValue.value);
 				const std::string& methodName = static_cast<StringValue*>(nameValue.value)->value;
-
-				InlineCache& cache = frames[frameCount - 1].GetChunk()->GetInlineCache(cacheIndex);
-
-				uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
-				VMValue method;
-				const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
-				if (entry)
-				{
-					slot = entry->slot;
-					method = entry->method;
-				}
-				else
-				{
-					slot = klass->GetSlot(methodName);
-					method = klass->FindMethod(methodName);
-					if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
-					{
-						RuntimeError(IP, "Undefined method '%s'.", methodName.c_str());
-						return INTERPRET_RUNTIME_ERROR;
-					}
-					cache.Update(klass, klass->slotNum, slot, method);
-				}
 				frames[frameCount - 1].ip = IP;
-				if (!Invoke(instance, method, argCountValue, IP))
+				if (!InvokeFromClass(superclassValue, instance, methodName, argCountValue, cacheIndex, IP))
 				{
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -1478,6 +1511,7 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 		CallFrame newFrame;
 		newFrame.closure = closure;
 		newFrame.ip = newFrame.GetChunk()->code;
+		newFrame.inner = VMValue();
 		// Frame slots start at the callee slot, so locals can index from that base.
 		newFrame.slots = stackTop - argCount - 1;
 		// If the callee is a bound method, the receiver is stored in slot 0 of the new frame.
@@ -1512,8 +1546,65 @@ bool VM::Invoke(VMValue receiver, VMValue method, int argCount, const uint8_t* i
 	newFrame.ip = newFrame.GetChunk()->code;
 	newFrame.slots = stackTop - argCount - 1;
 	newFrame.slots[0] = receiver;
+	newFrame.inner = VMValue();
 	frames[frameCount++] = newFrame;
 	return true;
+}
+
+bool VM::InvokeFromClass(VMValue classValue, VMValue receiver, const std::string& methodName, int argCount, uint32_t cacheIndex, const uint8_t* instructionIp)
+{
+	Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(classValue.value);
+	Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(receiver.value);
+	InlineCache& cache = frames[frameCount - 1].GetChunk()->GetInlineCache(cacheIndex);
+
+	uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
+	VMValue method;
+	const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
+	if (entry)
+	{
+		slot = entry->slot;
+		method = entry->method;
+	}
+	else
+	{
+		slot = klass->GetSlot(methodName);
+		method = klass->FindMethod(methodName);
+		if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
+		{
+			if (classValue.value == instance->classValue.value)
+			{
+				RuntimeError(instructionIp, "Undefined method '%s'.", methodName.c_str());
+			}
+			else
+			{
+				RuntimeError(instructionIp, "Undefined method '%s' in superclass.", methodName.c_str());
+			}
+			return false;
+		}
+		cache.Update(klass, klass->slotNum, slot, method);
+	}
+
+	VMValue callee;
+	if (classValue.value == instance->classValue.value && slot != Compiler::VMClassValue::INVALID_SLOT)
+	{
+		callee = instance->GetField(slot);
+	}
+	if (!callee.value && !method.value)
+	{
+		if (classValue.value == instance->classValue.value)
+		{
+			RuntimeError(instructionIp, "Undefined method '%s'.", methodName.c_str());
+		}
+		else
+		{
+			RuntimeError(instructionIp, "Undefined method '%s' in superclass.", methodName.c_str());
+		}
+		return false;
+	}
+
+	return callee.value
+		? Call(callee, argCount, instructionIp)
+		: Invoke(receiver, method, argCount, instructionIp);
 }
 
 void VM::DefineNative(const std::string& name, Compiler::NativeFn function, int32_t arity)
@@ -1624,6 +1715,7 @@ void VM::MarkRoots()
 	{
 		CallFrame& frame = frames[i];
 		MarkValue(frame.closure);
+		MarkValue(frame.inner);
 	}
 	for (UpvalueValue* upvalue = openUpvalues; upvalue != nullptr; upvalue = upvalue->nextUpvalue)
 	{

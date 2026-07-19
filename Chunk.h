@@ -1,11 +1,8 @@
 #pragma once
 #include "Value.h"
 #include <cstdint>
-#include <malloc.h>
 #include <cstdlib>
-#include <vector>
 #include <type_traits>
-#include <new>
 #include <utility>
 
 enum OpCode
@@ -44,6 +41,9 @@ enum OpCode
 	OP_CALL,
 	OP_INVOKE,
 	OP_INVOKE_LONG,
+	OP_ROOT_INVOKE,
+	OP_ROOT_INVOKE_LONG,
+	OP_INNER_INVOKE,
 	OP_CLOSURE,
 	OP_GET_UPVALUE,
 	OP_SET_UPVALUE,
@@ -253,6 +253,8 @@ struct Chunk
 	int32_t ClosureInstruction(const char* name, int32_t offset, int32_t indent);
 	int32_t InvokeInstruction(const char* name, int32_t offset);
 	int32_t InvokeLongInstruction(const char* name, int32_t offset);
+	int32_t RootInvokeInstruction(const char* name, int32_t offset);
+	int32_t RootInvokeLongInstruction(const char* name, int32_t offset);
 
 	uint32_t AppendInlineCache();
 	InlineCache& GetInlineCache(uint32_t cacheIndex);

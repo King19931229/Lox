@@ -5,7 +5,6 @@
 #include "TokenType.h"
 #include "Environment.h"
 #include <vector>
-#include <stdexcept>
 
 class Interpreter : public ExprVisitor<ValuePtr>, public StatVisitor<bool>
 {

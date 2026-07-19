@@ -1,5 +1,4 @@
 #include "Compiler.h"
-#include "LoxCallable.h"
 #include "VM.h"
 
 #define DEBUG_PRINT_CODE
@@ -93,12 +92,22 @@ uint32_t Compiler::VMClassValue::GetOrCreateSlot(const std::string& fieldName)
 	return fieldToSlot[fieldName] = slotNum++;
 }
 
-VMValue Compiler::VMClassValue::FindMethod(const std::string& methodName) const
+VMValue Compiler::VMClassValue::FindDirectMethod(const std::string& methodName) const
 {
 	auto it = methods.find(methodName);
 	if (it != methods.end())
 	{
 		return it->second;
+	}
+	return VMValue();
+}
+
+VMValue Compiler::VMClassValue::FindMethod(const std::string& methodName) const
+{
+	VMValue method = FindDirectMethod(methodName);
+	if (method.value)
+	{
+		return method;
 	}
 	if (superClass.value)
 	{
@@ -458,12 +467,12 @@ void Compiler::ClassDeclaration()
 	{
 		Consume(IDENTIFIER, "Expect superclass name.");
 		Token superclassName = parser.previous;
-		NamedVariable(superclassName, false);
 
 		// Create a new scope for super for each class, so that super is only accessible within the class body.
 		BeginScope();
 		AddLocal(Token(IDENTIFIER, "super", superclassName.line, superclassName.column), false);
 		DefineVariable(-1, false);
+		NamedVariable(superclassName, false);
 
 		NamedVariable(className, false);
 		if (superclassName.lexeme == className.lexeme)
@@ -1061,6 +1070,15 @@ void Compiler::Or(bool)
 
 void Compiler::Variable(bool canAssign)
 {
+	if (currentClass != nullptr && parser.previous.lexeme == "inner")
+	{
+		Consume(LEFT_PAREN, "Expect '(' after 'inner'.");
+		// Use this as the receiver for inner method calls
+		NamedVariable(Token(IDENTIFIER, "this", parser.previous.line, parser.previous.column), false);
+		uint8_t argCount = ArgumentList();
+		EmitBytes(OP_INNER_INVOKE, argCount);
+		return;
+	}
 	NamedVariable(parser.previous, canAssign);
 }
 
@@ -1200,6 +1218,22 @@ void Compiler::EmitInvoke(uint8_t op, uint8_t opLong, uint32_t nameConstant, uin
 	}
 }
 
+void Compiler::EmitRootInvoke(uint32_t nameConstant, uint8_t argCount)
+{
+	if (nameConstant <= 0xFF)
+	{
+		EmitBytes(OP_ROOT_INVOKE, (uint8_t)nameConstant, argCount);
+	}
+	else
+	{
+		EmitBytes(OP_ROOT_INVOKE_LONG,
+			(uint8_t)((nameConstant >> 16) & 0xFF),
+			(uint8_t)((nameConstant >> 8) & 0xFF),
+			(uint8_t)(nameConstant & 0xFF),
+			argCount);
+	}
+}
+
 void Compiler::Dot(bool canAssign)
 {
 	Consume(IDENTIFIER, "Expect property name after '.'.");
@@ -1222,6 +1256,15 @@ void Compiler::Dot(bool canAssign)
 			EmitPropertyAccess(OP_GET_PROPERTY, OP_GET_PROPERTY_LONG, nameConstant, cacheIndex);
 		}
 	}
+}
+
+void Compiler::RootDot(bool)
+{
+	Consume(IDENTIFIER, "Expect method name after '..'.");
+	uint32_t nameConstant = IdentifierConstant(parser.previous);
+	Consume(LEFT_PAREN, "Expect '(' after root method name.");
+	uint8_t argCount = ArgumentList();
+	EmitRootInvoke(nameConstant, argCount);
 }
 
 void Compiler::Bracket(bool canAssign)
@@ -1300,7 +1343,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[RIGHT_BRACKET] = { nullptr,             nullptr,            PREC_NONE };
 		rules[COMMA]         = { nullptr,             nullptr,            PREC_NONE };
 		rules[DOT]           = { nullptr,             &Compiler::Dot,     PREC_CALL };
-		rules[DOTDOT]        = { nullptr,             nullptr,            PREC_NONE };
+		rules[DOTDOT]        = { nullptr,             &Compiler::RootDot,  PREC_CALL };
 		rules[MINUS]         = { &Compiler::Unary,    &Compiler::Binary,  PREC_TERM };
 		rules[PLUS]          = { nullptr,             &Compiler::Binary,  PREC_TERM };
 		rules[SEMICOLON]     = { nullptr,             nullptr,            PREC_NONE };

@@ -691,6 +691,17 @@ void TestUnit::RunVMTest()
 		{ "class A { fun name() { return \"A\"; } } class B < A { fun name() { return super.name() + \"B\"; } } class C < B { fun name() { return super.name() + \"C\"; } } print C().name();", "ABC\n" },
 		{ "class Base { fun greet() { return this.name; } } class Derived < Base { fun getBaseGreet() { var greet = super.greet; return greet; } } var first = Derived(); var second = Derived(); first.name = \"first\"; second.name = \"second\"; var firstGreet = first.getBaseGreet(); var secondGreet = second.getBaseGreet(); print firstGreet(); print secondGreet();", "first\nsecond\n" },
 		{ MakeLongSuperInvokeSource(), "base\n" },
+
+		// Root invoke / inner chain.
+		{ "class A { fun m(s) { print \"A \" + s; inner(s); } } class B < A { fun m(s) { print \"B \" + s; } } var b = B(); b..m(\"x\");", "A x\nB x\n" },
+		{ "class A { fun m(s) { print \"A \" + s; inner(s); } } class B < A { fun m(s) { print \"B \" + s; inner(s); } } class C < B { fun m(s) { print \"C \" + s; } } C()..m(\"x\");", "A x\nB x\nC x\n" },
+		{ "class A { fun m(s) { print \"A \" + s; inner(s); } } class B < A { } class C < B { fun m(s) { print \"C \" + s; } } C()..m(\"x\");", "A x\nC x\n" },
+		{ "class A { fun m(s) { print \"A \" + s; inner(s); } } class B < A { fun m(s) { print \"B \" + s; } } B()..m(\"x\");", "A x\nB x\n" },
+		{ "class A { fun m(s) { return \"A\" + inner(s); } } class B < A { fun m(s) { return \"B\" + inner(s); } } class C < B { fun m(s) { return s; } } print C()..m(\"C\");", "ABC\n" },
+		{ "class A { fun m(s) { inner(s); } } A()..m(\"x\");", "inner() can only be used during a root invocation.", INTERPRET_RUNTIME_ERROR },
+		{ "class A { fun m() { inner(); } } var a = A(); a.m();", "inner() can only be used during a root invocation.", INTERPRET_RUNTIME_ERROR },
+		{ "class A { fun m() { inner(); } } A()..m();", "inner() can only be used during a root invocation.", INTERPRET_RUNTIME_ERROR },
+		{ "class A { fun m() { return \"A\"; } } class B < A { } B()..missing();", "Undefined method 'missing'.", INTERPRET_RUNTIME_ERROR },
 		{ "class Marker { fun init() { this.ready = true; } } print Marker().ready;", "true\n" },
 		{ "class Box { fun init(value) { this.value = value; } } var b = Box(7); print b; print b.value;", "<instance of Box>\n7\n" },
 		{ "class Thing { fun self() { return this; } } var thing = Thing(); print thing.self();", "<instance of Thing>\n" },

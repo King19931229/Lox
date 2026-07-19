@@ -300,6 +300,28 @@ int32_t Chunk::InvokeLongInstruction(const char* name, int32_t offset)
 	return offset + 8;
 }
 
+int32_t Chunk::RootInvokeInstruction(const char* name, int32_t offset)
+{
+	uint8_t nameIndex = code[offset + 1];
+	uint8_t argCount = code[offset + 2];
+	printf("%-16s %4d '", name, nameIndex);
+	PrintValue(constants.values[nameIndex]);
+	printf("'(%d args)\n", argCount);
+	return offset + 3;
+}
+
+int32_t Chunk::RootInvokeLongInstruction(const char* name, int32_t offset)
+{
+	uint32_t nameIndex = (uint32_t)(code[offset + 1] << 16);
+	nameIndex |= (uint32_t)(code[offset + 2] << 8);
+	nameIndex |= (uint32_t)(code[offset + 3]);
+	uint8_t argCount = code[offset + 4];
+	printf("%-16s %4d '", name, nameIndex);
+	PrintValue(constants.values[nameIndex]);
+	printf("'(%d args)\n", argCount);
+	return offset + 5;
+}
+
 int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 {
 	PrintIndent(indent);
@@ -411,6 +433,12 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 			return InvokeInstruction("OP_INVOKE", offset);
 		case OP_INVOKE_LONG:
 			return InvokeLongInstruction("OP_INVOKE_LONG", offset);
+		case OP_ROOT_INVOKE:
+			return RootInvokeInstruction("OP_ROOT_INVOKE", offset);
+		case OP_ROOT_INVOKE_LONG:
+			return RootInvokeLongInstruction("OP_ROOT_INVOKE_LONG", offset);
+		case OP_INNER_INVOKE:
+			return ByteInstruction("OP_INNER_INVOKE", offset);
 		case OP_INHERIT:
 			return SimpleInstruction("OP_INHERIT", offset);
 		case OP_GET_SUPER:

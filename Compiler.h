@@ -160,6 +160,7 @@ public:
 		virtual size_t Size() const override  { return sizeof(*this) + name.capacity(); }
 		uint32_t GetSlot(const std::string& fieldName) const;
 		uint32_t GetOrCreateSlot(const std::string& fieldName);
+		VMValue FindDirectMethod(const std::string& methodName) const;
 		VMValue FindMethod(const std::string& methodName) const;
 		void Blacken(VM& vm) override;
 	};
@@ -360,6 +361,7 @@ private:
 	void Variable(bool);
 	void Call(bool);
 	void Dot(bool canAssign);
+	void RootDot(bool canAssign);
 	void Bracket(bool canAssign);
 	void This(bool);
 	void Super(bool);
@@ -384,6 +386,7 @@ private:
 	void EmitConstant(VMValue value);
 	void EmitPropertyAccess(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint32_t cacheIndex);
 	void EmitInvoke(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint8_t argCount, uint32_t cacheIndex);
+	void EmitRootInvoke(uint32_t nameConstant, uint8_t argCount);
 	Chunk* CurrentChunk();
 
 	// --- Variable Helpers ---
