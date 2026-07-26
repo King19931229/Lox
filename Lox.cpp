@@ -16,7 +16,7 @@ Lox* Lox::instance = nullptr;
 
 // 辅助函数：使用可变参数格式化字符串，返回 std::string
 // 这个函数会安全地处理缓冲区大小，避免溢出
-std::string FormatString(const char* fmt, ...)
+static std::string FormatString(const char* fmt, ...)
 {
 	va_list args;
 	va_start(args, fmt);

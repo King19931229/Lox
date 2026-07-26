@@ -27,7 +27,7 @@ protected:
 	void RunFile(const char* path);
 	void RunPrompt();
 	void Run(const char* source);
-	void Report(size_t line, size_t column, const char* where, const char* message);
+	static void Report(size_t line, size_t column, const char* where, const char* message);
 public:
 	void ResetError();
 	void Error(size_t line, size_t column, const char* fmt, ...);

@@ -105,13 +105,13 @@ VMValue Compiler::VMClassValue::FindDirectMethod(const std::string& methodName) 
 VMValue Compiler::VMClassValue::FindMethod(const std::string& methodName) const
 {
 	VMValue method = FindDirectMethod(methodName);
-	if (method.value)
+	if (method.object)
 	{
 		return method;
 	}
-	if (superClass.value)
+	if (superClass.object)
 	{
-		VMClassValue* superClassObj = static_cast<VMClassValue*>(superClass.value);
+		VMClassValue* superClassObj = static_cast<VMClassValue*>(superClass.object);
 		return superClassObj->FindMethod(methodName);
 	}
 	return VMValue();
@@ -380,7 +380,7 @@ VMValue Compiler::CompileFunction(FunctionType fnType, const std::string& name)
 
 	BeginScope();
 
-	VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(function.value);
+	VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(function.object);
 
 	// Token consumption here uses *this* (the enclosing compiler) — since
 	// sub shares ctx, nextToken advances for both simultaneously.
@@ -420,7 +420,7 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 	Compiler sub(this, ctx);
 	VMValue fn = sub.CompileFunction(fnType, name);
 
-	if (fn.value == nullptr)
+	if (fn.object == nullptr)
 	{
 		// Sub-compiler encountered an error, bail out to avoid dereferencing null.
 		return;
@@ -430,7 +430,7 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 	EmitByte(OP_CLOSURE);
 	if (fnType != TYPE_SCRIPT)
 	{
-		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(fn.value);
+		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(fn.object);
 		EmitByte(fnValue->upvalueCount);
 		for (int32_t i = 0; i < fnValue->upvalueCount; i++)
 		{
@@ -865,7 +865,7 @@ VMValue Compiler::EndCompiler()
 	// recursively via DisassembleConstant when the parent chunk is disassembled.
 	if (!parser.hadError && enclosing == nullptr)
 	{
-		std::string disassemblyName = static_cast<std::string>(*function.value);
+		std::string disassemblyName = static_cast<std::string>(*function.object);
 		CurrentChunk()->Disassemble(disassemblyName.c_str());
 	}
 #endif // DEBUG_PRINT_CODE
@@ -874,7 +874,7 @@ VMValue Compiler::EndCompiler()
 	VMValue result = function;
 	VM::GetInstance().PopCompilerRoot(this);
 	// Clear local references so the destructor doesn't double-free.
-	function.value = nullptr;
+	function = VMValue();
 	compilingChunk = nullptr;
 
 	return result;
@@ -887,11 +887,11 @@ void Compiler::Number(bool /*canAssign*/)
 	const std::string& lexeme = parser.previous.lexeme;
 	if (lexeme.find('.') != std::string::npos)
 	{
-		EmitConstant(VM::Create(FloatValue::CreateRaw(std::stof(lexeme))));
+		EmitConstant(VMValue(std::stof(lexeme)));
 	}
 	else
 	{
-		EmitConstant(VM::Create(IntValue::CreateRaw(std::stoi(lexeme))));
+		EmitConstant(VMValue(std::stoi(lexeme)));
 	}
 }
 

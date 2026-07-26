@@ -123,15 +123,60 @@ struct Chunk;
 
 struct VMValue
 {
-	Value* value;
+	ValueType type;
+	union
+	{
+		bool boolean;
+		int integer;
+		float number;
+		Value* object;
+	};
 	VMValue()
-		: value(nullptr)
+		: type(TYPE_ERROR)
+		, object(nullptr)
 	{}
-	VMValue(Value* inValue)
-		: value(inValue)
+	VMValue(Value* inObject)
+		: type(inObject ? inObject->type : TYPE_ERROR)
+		, object(inObject)
 	{}
-	Chunk* GetChunk() const { return value ? value->GetChunk() : nullptr; }
+	VMValue(bool inBoolean)
+		: type(TYPE_BOOL)
+		, boolean(inBoolean)
+	{}
+	VMValue(int inInteger)
+		: type(TYPE_INT)
+		, integer(inInteger)
+	{}
+	VMValue(float inNumber)
+		: type(TYPE_FLOAT)
+		, number(inNumber)
+	{}
+
+	static VMValue Nil()
+	{
+		VMValue value;
+		value.type = TYPE_NIL;
+		return value;
+	}
+
+	bool IsObject() const
+	{
+		return type != TYPE_INT && type != TYPE_FLOAT && type != TYPE_BOOL && type != TYPE_NIL;
+	}
+
+	bool IsValid() const
+	{
+		return type != TYPE_ERROR || object != nullptr;
+	}
+
+	Chunk* GetChunk() const
+	{
+		return IsObject() && object ? object->GetChunk() : nullptr;
+	}
 };
+
+bool IsEqual(const VMValue& left, const VMValue& right);
+std::string VMValueToString(const VMValue& value);
 
 struct VMValueArray
 {
@@ -244,8 +289,8 @@ struct Chunk
 	int32_t ByteInstruction(const char* name, int32_t offset);
 	int32_t ThreeByteInstruction(const char* name, int32_t offset);
 	int32_t JumpInstruction(const char* name, int32_t sign, int32_t offset);
-	void PrintValue(VMValue value);
-	void PrintValueStdout(VMValue value);
+	static void PrintValue(VMValue value);
+	static void PrintValueStdout(VMValue value);
 	int32_t ConstantInstruction(const char* name, int32_t offset);
 	int32_t ConstantLongInstruction(const char* name, int32_t offset);
 	int32_t PropertyInstruction(const char* name, int32_t offset);

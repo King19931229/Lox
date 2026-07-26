@@ -59,7 +59,7 @@ private:
 };
 
 // 修改后：根据 baseName 生成 Visitor 接口和模板类的代码
-std::string GenerateVisitorBody(const std::string& baseName, const std::vector<std::string>& types)
+static std::string GenerateVisitorBody(const std::string& baseName, const std::vector<std::string>& types)
 {
 	ContentWriter writer;
 	

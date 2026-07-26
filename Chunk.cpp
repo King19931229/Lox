@@ -11,6 +11,50 @@ static void PrintIndent(int32_t indent)
 	}
 }
 
+bool IsEqual(const VMValue& left, const VMValue& right)
+{
+	if ((left.type == TYPE_INT || left.type == TYPE_FLOAT) &&
+		(right.type == TYPE_INT || right.type == TYPE_FLOAT))
+	{
+		float leftNumber = left.type == TYPE_INT ? (float)left.integer : left.number;
+		float rightNumber = right.type == TYPE_INT ? (float)right.integer : right.number;
+		return leftNumber == rightNumber;
+	}
+	if (left.type != right.type)
+	{
+		return false;
+	}
+	switch (left.type)
+	{
+		case TYPE_NIL:
+			return true;
+		case TYPE_BOOL:
+			return left.boolean == right.boolean;
+		case TYPE_STRING:
+			return left.object && right.object &&
+				static_cast<StringValue*>(left.object)->value == static_cast<StringValue*>(right.object)->value;
+		default:
+			return false;
+	}
+}
+
+std::string VMValueToString(const VMValue& value)
+{
+	switch (value.type)
+	{
+		case TYPE_INT:
+			return std::to_string(value.integer);
+		case TYPE_FLOAT:
+			return std::to_string(value.number);
+		case TYPE_BOOL:
+			return value.boolean ? "true" : "false";
+		case TYPE_NIL:
+			return "nil";
+		default:
+			return value.object ? static_cast<std::string>(*value.object) : "nil";
+	}
+}
+
 // VMValueArray implementations
 void VMValueArray::Init()
 {
@@ -123,7 +167,7 @@ int32_t Chunk::AddConstant(VMValue value)
 {
 	for (int32_t i = 0; i < constants.count; ++i)
 	{
-		if (IsEqual(constants.values[i].value, value.value))
+		if (IsEqual(constants.values[i], value))
 		{
 			return i;
 		}
@@ -194,25 +238,13 @@ int32_t Chunk::JumpInstruction(const char* name, int32_t sign, int32_t offset)
 
 void Chunk::PrintValue(VMValue value)
 {
-	if (!value.value)
-	{
-		printf("nil");
-		return;
-	}
-	// Convert to std::string via Value's operator std::string()
-	std::string s = static_cast<std::string>(*value.value);
+	std::string s = VMValueToString(value);
 	printf("%s", s.c_str());
 }
 
 void Chunk::PrintValueStdout(VMValue value)
 {
-	if (!value.value)
-	{
-		std::cout << "nil";
-		return;
-	}
-	std::string s = static_cast<std::string>(*value.value);
-	std::cout << s;
+	std::cout << VMValueToString(value);
 }
 
 int32_t Chunk::ConstantInstruction(const char* name, int32_t offset)
@@ -463,9 +495,9 @@ void Chunk::DisassembleConstant(int32_t index, int32_t indent)
 	printf("'\n");
 	// If this constant is a nested function, recursively disassemble it.
 	VMValue& val = constants.values[index];
-	if (val.GetChunk() != nullptr && val.value != nullptr)
+	if (val.GetChunk() != nullptr)
 	{
-		std::string nestedName = static_cast<std::string>(*val.value);
+		std::string nestedName = VMValueToString(val);
 		val.GetChunk()->Disassemble(nestedName.c_str(), indent + 1);
 	}
 }

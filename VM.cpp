@@ -17,11 +17,11 @@ namespace
 	constexpr size_t INVALID_GLOBAL_SLOT = (size_t)-1;
 }
 
-VMValue clock(int argCount, VMValue* args)
+static VMValue clock(int argCount, VMValue* args)
 {
 	static const auto startTime = std::chrono::steady_clock::now();
 	auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - startTime);
-	return VM::Create(FloatValue::CreateRaw(elapsed.count()));
+	return VMValue(elapsed.count());
 }
 
 VM* VM::instance = nullptr;
@@ -162,17 +162,18 @@ VMValue VM::Peek(int32_t distance)
 
 bool VM::IsNumber(VMValue value)
 {
-	return value.value && (value.value->type == TYPE_INT || value.value->type == TYPE_FLOAT);
+	return value.type == TYPE_INT || value.type == TYPE_FLOAT;
 }
 
 bool VM::IsFalsey(VMValue value)
 {
-	return !value.value || value.value->type == TYPE_NIL || (value.value->type == TYPE_BOOL && !static_cast<bool>(*value.value));
+	return value.type == TYPE_NIL || value.type == TYPE_ERROR ||
+		(value.type == TYPE_BOOL && !value.boolean);
 }
 
 bool VM::IsString(VMValue value)
 {
-	return value.value && value.value->type == TYPE_STRING;
+	return value.type == TYPE_STRING && value.object;
 }
 
 bool VM::ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot, const uint8_t* instructionIp)
@@ -183,7 +184,7 @@ bool VM::ResolveOrCreateGlobalSlot(VMValue nameValue, size_t& outSlot, const uin
 		return false;
 	}
 
-	StringValue* stringValue = static_cast<StringValue*>(nameValue.value);
+	StringValue* stringValue = static_cast<StringValue*>(nameValue.object);
 	size_t cachedSlot = stringValue->cachedGlobalSlot;
 	if (cachedSlot != INVALID_GLOBAL_SLOT && cachedSlot < globalSlots.size())
 	{
@@ -219,7 +220,7 @@ bool VM::ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot, const uin
 		return false;
 	}
 
-	StringValue* stringValue = static_cast<StringValue*>(nameValue.value);
+	StringValue* stringValue = static_cast<StringValue*>(nameValue.object);
 	size_t cachedSlot = stringValue->cachedGlobalSlot;
 	if (cachedSlot != INVALID_GLOBAL_SLOT && cachedSlot < globalSlots.size())
 	{
@@ -318,7 +319,7 @@ InterpretResult VM::Negate(const uint8_t* instructionIp)
 	}
 
 	VMValue top = *(stackTop - 1);
-	*(stackTop - 1) = VM::Create(ValNegate(top.value));
+	*(stackTop - 1) = top.type == TYPE_INT ? VMValue(-top.integer) : VMValue(-top.number);
 	return INTERPRET_OK;
 }
 
@@ -443,6 +444,36 @@ Value* VM::AllocValue(Value* value)
 
 VMValue VM::Create(Value* value)
 {
+	if (value == nullptr)
+	{
+		return VMValue();
+	}
+	switch (value->type)
+	{
+		case TYPE_INT:
+		{
+			int result = static_cast<IntValue*>(value)->value;
+			delete value;
+			return VMValue(result);
+		}
+		case TYPE_FLOAT:
+		{
+			float result = static_cast<FloatValue*>(value)->value;
+			delete value;
+			return VMValue(result);
+		}
+		case TYPE_BOOL:
+		{
+			bool result = static_cast<BoolValue*>(value)->value;
+			delete value;
+			return VMValue(result);
+		}
+		case TYPE_NIL:
+			delete value;
+			return VMValue::Nil();
+		default:
+			break;
+	}
 	Value* object = GetInstance().AllocValue(value);
 	return object ? VMValue(object) : VMValue();
 }
@@ -544,23 +575,6 @@ InterpretResult VM::Run()
 		return ((uint32_t)READ_BYTE() << 16) | ((uint32_t)READ_BYTE() << 8) | (uint32_t)READ_BYTE();
 	};
 
-	auto PUSH_RAW_RESULT = [&](Value* value) {
-		if (value == nullptr)
-		{
-			RuntimeError(IP, "Operation produced a null value.");
-			return INTERPRET_RUNTIME_ERROR;
-		}
-		if (value->type == TYPE_ERROR)
-		{
-			std::string message = static_cast<std::string>(*value);
-			delete value;
-			RuntimeError(IP, "%s", message.c_str());
-			return INTERPRET_RUNTIME_ERROR;
-		}
-		Push(VM::Create(value));
-		return INTERPRET_OK;
-	};
-
 	auto BINARY_OP = [&](OpCode op) {
 		VMValue b = Pop();
 		VMValue a = Pop();
@@ -571,34 +585,34 @@ InterpretResult VM::Run()
 			return INTERPRET_RUNTIME_ERROR;
 		}
 
+		bool bothIntegers = a.type == TYPE_INT && b.type == TYPE_INT;
+		float aNumber = a.type == TYPE_INT ? (float)a.integer : a.number;
+		float bNumber = b.type == TYPE_INT ? (float)b.integer : b.number;
 		switch (op)
 		{
-			case OP_ADD:
-			{
-				return PUSH_RAW_RESULT(ValAdd(a.value, b.value));
-			}
 			case OP_SUBTRACT:
-			{
-				return PUSH_RAW_RESULT(ValSub(a.value, b.value));
-			}
+				Push(bothIntegers ? VMValue(a.integer - b.integer) : VMValue(aNumber - bNumber));
+				break;
 			case OP_MULTIPLY:
-			{
-				return PUSH_RAW_RESULT(ValMul(a.value, b.value));
-			}
+				Push(bothIntegers ? VMValue(a.integer * b.integer) : VMValue(aNumber * bNumber));
+				break;
 			case OP_DIVIDE:
 			{
-				return PUSH_RAW_RESULT(ValDiv(a.value, b.value));
+				if (bNumber == 0.0f)
+				{
+					RuntimeError(IP, "Division by zero.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				Push(bothIntegers ? VMValue(a.integer / b.integer) : VMValue(aNumber / bNumber));
+				break;
 			}
 			case OP_GREATER:
-			{
-				return PUSH_RAW_RESULT(ValGreater(a.value, b.value));
-			}
+				Push(VMValue(aNumber > bNumber));
+				break;
 			case OP_LESS:
-			{
-				return PUSH_RAW_RESULT(ValLess(a.value, b.value));
-			}
+				Push(VMValue(aNumber < bNumber));
+				break;
 			default:
-				// Handle unknown operation (could throw an exception or abort)
 				RuntimeError(IP, "Unknown binary operation!\n");
 				return INTERPRET_RUNTIME_ERROR;
 		}
@@ -611,22 +625,34 @@ InterpretResult VM::Run()
 		VMValue a = Pop();
 		if (IsString(a) && IsString(b))
 		{
-			return PUSH_RAW_RESULT(ValAdd(a.value, b.value));
+			std::string result = static_cast<StringValue*>(a.object)->value +
+				static_cast<StringValue*>(b.object)->value;
+			Push(VM::Create(StringValue::CreateRaw(result)));
 		}
 		else if (IsNumber(a) && IsNumber(b))
 		{
-			return PUSH_RAW_RESULT(ValAdd(a.value, b.value));
+			if (a.type == TYPE_INT && b.type == TYPE_INT)
+			{
+				Push(VMValue(a.integer + b.integer));
+			}
+			else
+			{
+				float aNumber = a.type == TYPE_INT ? (float)a.integer : a.number;
+				float bNumber = b.type == TYPE_INT ? (float)b.integer : b.number;
+				Push(VMValue(aNumber + bNumber));
+			}
 		}
 		else
 		{
 			RuntimeError(IP, "Operands must be two numbers or two strings for '+'.");
 			return INTERPRET_RUNTIME_ERROR;
 		}
+		return INTERPRET_OK;
 	};
 
 	auto NOT_OP = [&]() {
 		VMValue value = Pop();
-		Push(VM::Create(BoolValue::CreateRaw(IsFalsey(value))));
+		Push(VMValue(IsFalsey(value)));
 		return INTERPRET_OK;
 	};
 
@@ -658,17 +684,17 @@ InterpretResult VM::Run()
 			}
 			case OP_NIL:
 			{
-				Push(VM::Create(NilValue::CreateRaw()));
+				Push(VMValue::Nil());
 				break;
 			}
 			case OP_TRUE:
 			{
-				Push(VM::Create(BoolValue::CreateRaw(true)));
+				Push(VMValue(true));
 				break;
 			}
 			case OP_FALSE:
 			{
-				Push(VM::Create(BoolValue::CreateRaw(false)));
+				Push(VMValue(false));
 				break;
 			}
 			case OP_NEGATE:
@@ -715,7 +741,7 @@ InterpretResult VM::Run()
 			{
 				VMValue b = Pop();
 				VMValue a = Pop();
-				Push(VM::Create(BoolValue::CreateRaw(IsEqual(a.value, b.value))));
+				Push(VMValue(IsEqual(a, b)));
 				break;
 			}
 			case OP_PRINT:
@@ -858,7 +884,7 @@ InterpretResult VM::Run()
 			case OP_ROOT_INVOKE_LONG:
 			{
 				VMValue nameValue = (opCode == OP_ROOT_INVOKE) ? READ_CONSTANT() : READ_LONG_CONSTANT();
-				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				if (nameValue.type != TYPE_STRING || nameValue.object == nullptr)
 				{
 					RuntimeError(IP, "Method name must be a string.");
 					return INTERPRET_RUNTIME_ERROR;
@@ -866,25 +892,25 @@ InterpretResult VM::Run()
 
 				uint8_t argCountValue = READ_BYTE();
 				VMValue receiver = stackTop[-argCountValue - 1];
-				if (receiver.value == nullptr || receiver.value->type != TYPE_INSTANCE)
+				if (receiver.type != TYPE_INSTANCE || receiver.object == nullptr)
 				{
 					RuntimeError(IP, "Only instances have methods.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 
-				const std::string& methodName = static_cast<StringValue*>(nameValue.value)->value;
-				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(receiver.value);
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
+				const std::string& methodName = static_cast<StringValue*>(nameValue.object)->value;
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(receiver.object);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.object);
 				std::vector<VMValue> methods;
 				Compiler::VMClassValue* current = klass;
 				while (current)
 				{
 					VMValue method = current->FindDirectMethod(methodName);
-					if (method.value)
+					if (method.object)
 					{
 						methods.push_back(method);
 					}
-					current = current->superClass.value ? static_cast<Compiler::VMClassValue*>(current->superClass.value) : nullptr;
+					current = current->superClass.object ? static_cast<Compiler::VMClassValue*>(current->superClass.object) : nullptr;
 				}
 
 				if (methods.empty())
@@ -917,18 +943,18 @@ InterpretResult VM::Run()
 				uint8_t argCountValue = READ_BYTE();
 				CallFrame* caller = &frames[frameCount - 1];
 				VMValue inner = caller->inner;
-				if (inner.value == nullptr)
+				if (!inner.IsValid())
 				{
 					RuntimeError(IP, "inner() can only be used during a root invocation.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				if (inner.value->type != TYPE_INNER_VALUE)
+				if (inner.type != TYPE_INNER_VALUE || inner.object == nullptr)
 				{
 					RuntimeError(IP, "Inner value expected for invocation.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				VMValue instance = stackTop[-argCountValue - 1];
-				InnerValue* innerValue = static_cast<InnerValue*>(inner.value);
+				InnerValue* innerValue = static_cast<InnerValue*>(inner.object);
 				caller->ip = IP;
 				if (!Invoke(instance, innerValue->closure, argCountValue, IP))
 				{
@@ -961,7 +987,7 @@ InterpretResult VM::Run()
 			case OP_CLOSURE:
 			{
 				VMValue functionValue = Pop();
-				if (functionValue.value == nullptr || functionValue.value->type != TYPE_CALLABLE)
+				if (functionValue.type != TYPE_CALLABLE || functionValue.object == nullptr)
 				{
 					RuntimeError(IP, "Can only create closures from function values.");
 					return INTERPRET_RUNTIME_ERROR;
@@ -1008,7 +1034,7 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				VMValue value = frame->GetUpvalues()[index];
-				UpvalueValue* upvalue = static_cast<UpvalueValue*>(value.value);
+				UpvalueValue* upvalue = static_cast<UpvalueValue*>(value.object);
 				Push(*upvalue->location);
 				break;
 			}
@@ -1022,7 +1048,7 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				VMValue newValue = Peek(0);
-				UpvalueValue* upvalue = static_cast<UpvalueValue*>(frame->GetUpvalues()[index].value);
+				UpvalueValue* upvalue = static_cast<UpvalueValue*>(frame->GetUpvalues()[index].object);
 				*upvalue->location = newValue;
 				break;
 			}
@@ -1036,12 +1062,12 @@ InterpretResult VM::Run()
 			case OP_CLASS:
 			{
 				VMValue nameValue = READ_CONSTANT();
-				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				if (nameValue.type != TYPE_STRING || nameValue.object == nullptr)
 				{
 					RuntimeError(IP, "Class name must be a string.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				VMValue classValue = VM::Create(new Compiler::VMClassValue(static_cast<StringValue*>(nameValue.value)->value));
+				VMValue classValue = VM::Create(new Compiler::VMClassValue(static_cast<StringValue*>(nameValue.object)->value));
 				Push(classValue);
 				break;
 			}
@@ -1049,7 +1075,7 @@ InterpretResult VM::Run()
 			case OP_INVOKE_LONG:
 			{
 				VMValue nameValue = (opCode == OP_INVOKE) ? READ_CONSTANT() : READ_LONG_CONSTANT();
-				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				if (nameValue.type != TYPE_STRING || nameValue.object == nullptr)
 				{
 					RuntimeError(IP, "Method name must be a string.");
 					return INTERPRET_RUNTIME_ERROR;
@@ -1059,14 +1085,14 @@ InterpretResult VM::Run()
 				uint32_t cacheIndex = (opCode == OP_INVOKE) ? READ_BYTE() : READ_THREE_BYTE();
 
 				VMValue object = stackTop[-argCountValue - 1];
-				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				if (object.type != TYPE_INSTANCE || object.object == nullptr)
 				{
 					RuntimeError(IP, "Only instances have methods.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 
-				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
-				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.object);
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.object)->value;
 				// Keep the caller IP up to date before either call path can push a frame.
 				frames[frameCount - 1].ip = IP;
 				if (!InvokeFromClass(instance->classValue, object, propertyName, argCountValue, cacheIndex, IP))
@@ -1094,21 +1120,21 @@ InterpretResult VM::Run()
 				}
 
 				VMValue object = Peek(0);
-				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				if (object.type != TYPE_INSTANCE || object.object == nullptr)
 				{
 					RuntimeError(IP, "Only instances have properties.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.object);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.object);
 
 				VMValue nameValue = chunk->constants.values[constantIndex];
-				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				if (nameValue.type != TYPE_STRING || nameValue.object == nullptr)
 				{
 					RuntimeError(IP, "Property name must be a string.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.object)->value;
 
 				InlineCache& cache = chunk->GetInlineCache(cacheIndex);
 				uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
@@ -1127,7 +1153,7 @@ InterpretResult VM::Run()
 				}
 
 				VMValue valueToGet = (slot != Compiler::VMClassValue::INVALID_SLOT) ? instance->GetField(slot) : VMValue();
-				if (valueToGet.value)
+				if (valueToGet.IsValid())
 				{
 					// Pop the instance
 					Pop();
@@ -1135,7 +1161,7 @@ InterpretResult VM::Run()
 				}
 				else
 				{
-					if (method.value)
+					if (method.object)
 					{
 						VMValue boundMethod = VM::Create(new Compiler::BoundMethodValue(object, method));
 						Pop();
@@ -1167,21 +1193,21 @@ InterpretResult VM::Run()
 				}
 
 				VMValue nameValue = chunk->constants.values[constantIndex];
-				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				if (nameValue.type != TYPE_STRING || nameValue.object == nullptr)
 				{
 					RuntimeError(IP, "Property name must be a string.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				VMValue valueToSet = Pop();
 				VMValue object = Pop();
-				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				if (object.type != TYPE_INSTANCE || object.object == nullptr)
 				{
 					RuntimeError(IP, "Only instances have properties.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
-				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.object);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.object);
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.object)->value;
 
 				InlineCache& cache = chunk->GetInlineCache(cacheIndex);
 				const InlineCache::Entry* entry = cache.Match(klass, klass->slotNum);
@@ -1202,20 +1228,20 @@ InterpretResult VM::Run()
 			case OP_GET_INDEX:
 			{
 				VMValue nameValue = Pop();
-				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				if (nameValue.type != TYPE_STRING || nameValue.object == nullptr)
 				{
 					RuntimeError(IP, "Property name must be a string.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				VMValue object = Pop();
-				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				if (object.type != TYPE_INSTANCE || object.object == nullptr)
 				{
 					RuntimeError(IP, "Only instances can be indexed.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
-				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.object);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.object);
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.object)->value;
 				uint32_t slot = klass->GetSlot(propertyName);
 				if (slot == Compiler::VMClassValue::INVALID_SLOT)
 				{
@@ -1223,7 +1249,7 @@ InterpretResult VM::Run()
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				VMValue valueToGet = instance->GetField(slot);
-				if (valueToGet.value == nullptr)
+				if (!valueToGet.IsValid())
 				{
 					RuntimeError(IP, "Undefined property '%s'.", propertyName.c_str());
 					return INTERPRET_RUNTIME_ERROR;
@@ -1235,20 +1261,20 @@ InterpretResult VM::Run()
 			{
 				VMValue valueToSet = Pop();
 				VMValue nameValue = Pop();
-				if (nameValue.value == nullptr || nameValue.value->type != TYPE_STRING)
+				if (nameValue.type != TYPE_STRING || nameValue.object == nullptr)
 				{
 					RuntimeError(IP, "Property name must be a string.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				VMValue object = Pop();
-				if (object.value == nullptr || object.value->type != TYPE_INSTANCE)
+				if (object.type != TYPE_INSTANCE || object.object == nullptr)
 				{
 					RuntimeError(IP, "Only instances have properties.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.value);
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.value);
-				const std::string& propertyName = static_cast<StringValue*>(nameValue.value)->value;
+				Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(object.object);
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(instance->classValue.object);
+				const std::string& propertyName = static_cast<StringValue*>(nameValue.object)->value;
 				uint32_t slot = klass->GetOrCreateSlot(propertyName);
 				instance->SetField(slot, valueToSet);
 				Push(valueToSet);
@@ -1264,41 +1290,41 @@ InterpretResult VM::Run()
 					nameValue = READ_LONG_CONSTANT();
 				VMValue methodValue = Pop();
 				VMValue classValue = Peek(0);
-				if (classValue.value == nullptr || classValue.value->type != TYPE_CLASS)
+				if (classValue.type != TYPE_CLASS || classValue.object == nullptr)
 				{
 					RuntimeError(IP, "Only classes can have methods.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(classValue.value);
-				if (methodValue.value == nullptr || methodValue.value->type != TYPE_CALLABLE)
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(classValue.object);
+				if (methodValue.type != TYPE_CALLABLE || methodValue.object == nullptr)
 				{
 					RuntimeError(IP, "Method must be a callable.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(methodValue.value);
+				Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(methodValue.object);
 				if (functionValue->GetType() != Compiler::VM_FUNC_CLOSURE)
 				{
 					RuntimeError(IP, "Method must be a closure.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				klass->methods[static_cast<StringValue*>(nameValue.value)->value] = methodValue;
+				klass->methods[static_cast<StringValue*>(nameValue.object)->value] = methodValue;
 				break;
 			}
 			case OP_INHERIT:
 			{
 				VMValue classValue = Pop();
 				VMValue superclassValue = Peek(0);
-				if (classValue.value == nullptr || classValue.value->type != TYPE_CLASS)
+				if (classValue.type != TYPE_CLASS || classValue.object == nullptr)
 				{
 					RuntimeError(IP, "Can only inherit from a class.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				if (superclassValue.value == nullptr || superclassValue.value->type != TYPE_CLASS)
+				if (superclassValue.type != TYPE_CLASS || superclassValue.object == nullptr)
 				{
 					RuntimeError(IP, "Superclass must be a class.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				static_cast<Compiler::VMClassValue*>(classValue.value)->superClass = superclassValue;
+				static_cast<Compiler::VMClassValue*>(classValue.object)->superClass = superclassValue;
 				break;
 			}
 			case OP_GET_SUPER:
@@ -1313,21 +1339,21 @@ InterpretResult VM::Run()
 				uint32_t cacheIndex = (opCode == OP_GET_SUPER) ? READ_BYTE() : READ_THREE_BYTE();
 
 				VMValue superclassValue = Pop();
-				if (superclassValue.value == nullptr || superclassValue.value->type != TYPE_CLASS)
+				if (superclassValue.type != TYPE_CLASS || superclassValue.object == nullptr)
 				{
 					RuntimeError(IP, "Superclass must be a class.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 
 				VMValue instance = Pop();
-				if (instance.value == nullptr || instance.value->type != TYPE_INSTANCE)
+				if (instance.type != TYPE_INSTANCE || instance.object == nullptr)
 				{
 					RuntimeError(IP, "Only instances have methods.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 
-				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(superclassValue.value);
-				const std::string& methodName = static_cast<StringValue*>(nameValue.value)->value;
+				Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(superclassValue.object);
+				const std::string& methodName = static_cast<StringValue*>(nameValue.object)->value;
 
 				InlineCache& cache = frames[frameCount - 1].GetChunk()->GetInlineCache(cacheIndex);
 				uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
@@ -1343,14 +1369,14 @@ InterpretResult VM::Run()
 				{
 					slot = klass->GetSlot(methodName);
 					method = klass->FindMethod(methodName);
-					if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
+					if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.object)
 					{
 						RuntimeError(IP, "Undefined method '%s' in superclass.", methodName.c_str());
 						return INTERPRET_RUNTIME_ERROR;
 					}
 					cache.Update(klass, klass->slotNum, slot, method);
 				}
-				if (!method.value)
+				if (!method.object)
 				{					
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -1370,20 +1396,20 @@ InterpretResult VM::Run()
 				uint32_t cacheIndex = (opCode == OP_SUPER_INVOKE) ? READ_BYTE() : READ_THREE_BYTE();
 
 				VMValue superclassValue = Pop();
-				if (superclassValue.value == nullptr || superclassValue.value->type != TYPE_CLASS)
+				if (superclassValue.type != TYPE_CLASS || superclassValue.object == nullptr)
 				{
 					RuntimeError(IP, "Superclass must be a class.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 
 				VMValue instance = stackTop[-argCountValue - 1];
-				if (instance.value == nullptr || instance.value->type != TYPE_INSTANCE)
+				if (instance.type != TYPE_INSTANCE || instance.object == nullptr)
 				{
 					RuntimeError(IP, "Only instances have methods.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 
-				const std::string& methodName = static_cast<StringValue*>(nameValue.value)->value;
+				const std::string& methodName = static_cast<StringValue*>(nameValue.object)->value;
 				frames[frameCount - 1].ip = IP;
 				if (!InvokeFromClass(superclassValue, instance, methodName, argCountValue, cacheIndex, IP))
 				{
@@ -1414,15 +1440,16 @@ InterpretResult VM::Interpret(VMValue function)
 
 bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 {
-	if (callee.value == nullptr)
+	if ((callee.type != TYPE_CLASS && callee.type != TYPE_CALLABLE && callee.type != TYPE_BOUND_METHOD) ||
+		callee.object == nullptr)
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;
 	}
 
-	if (callee.value->type == TYPE_CLASS)
+	if (callee.type == TYPE_CLASS)
 	{
-		Compiler::VMClassValue* classValue = static_cast<Compiler::VMClassValue*>(callee.value);
+		Compiler::VMClassValue* classValue = static_cast<Compiler::VMClassValue*>(callee.object);
 		VMValue instance = VM::Create(new Compiler::VMInstanceValue(classValue));
 		// Replace the callee on the stack with the new instance
 		stackTop[-argCount - 1] = instance;
@@ -1445,16 +1472,10 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 		return true;
 	}
 
-	if (callee.value->type != TYPE_CALLABLE && callee.value->type != TYPE_BOUND_METHOD)
-	{
-		RuntimeError(instructionIp, "Can't call a non-function value.");
-		return false;
-	}
-
 	VMValue closure;
-	if (callee.value->type == TYPE_BOUND_METHOD)
+	if (callee.type == TYPE_BOUND_METHOD)
 	{
-		Compiler::BoundMethodValue* boundMethod = static_cast<Compiler::BoundMethodValue*>(callee.value);
+		Compiler::BoundMethodValue* boundMethod = static_cast<Compiler::BoundMethodValue*>(callee.object);
 		closure = boundMethod->method;
 	}
 	else
@@ -1462,16 +1483,16 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 		closure = callee;
 	}
 
-	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(closure.value);
+	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(closure.object);
 	VMValue function = closureValue->function;
 
-	if (!function.value || function.value->type != TYPE_CALLABLE)
+	if (function.type != TYPE_CALLABLE || function.object == nullptr)
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
 		return false;
 	}
 
-	Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(function.value);
+	Compiler::VMFunctionBase* functionValue = static_cast<Compiler::VMFunctionBase*>(function.object);
 	if (functionValue->GetType() != Compiler::VM_FUNC_NATIVE && !function.GetChunk())
 	{
 		RuntimeError(instructionIp, "Can't call a non-function value.");
@@ -1487,7 +1508,7 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 
 	if (functionValue->GetType() == Compiler::VM_FUNC_NATIVE)
 	{
-		Compiler::NativeFunctionValue* nativeFunction = static_cast<Compiler::NativeFunctionValue*>(function.value);
+		Compiler::NativeFunctionValue* nativeFunction = static_cast<Compiler::NativeFunctionValue*>(function.object);
 		VMValue result = nativeFunction->function(argCount, stackTop - argCount);
 		// Pop arguments and the callee
 		stackTop -= argCount + 1;
@@ -1515,9 +1536,9 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 		// Frame slots start at the callee slot, so locals can index from that base.
 		newFrame.slots = stackTop - argCount - 1;
 		// If the callee is a bound method, the receiver is stored in slot 0 of the new frame.
-		if (callee.value->type == TYPE_BOUND_METHOD)
+		if (callee.type == TYPE_BOUND_METHOD)
 		{
-			newFrame.slots[0] = static_cast<Compiler::BoundMethodValue*>(callee.value)->receiver;
+			newFrame.slots[0] = static_cast<Compiler::BoundMethodValue*>(callee.object)->receiver;
 		}
 		frames[frameCount++] = newFrame;
 	}
@@ -1527,7 +1548,7 @@ bool VM::Call(VMValue callee, int argCount, const uint8_t* instructionIp)
 
 bool VM::Invoke(VMValue receiver, VMValue method, int argCount, const uint8_t* instructionIp)
 {
-	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(method.value);
+	Compiler::VMClosureValue* closureValue = static_cast<Compiler::VMClosureValue*>(method.object);
 	int expectedArgCount = closureValue->Arity();
 	if (argCount != expectedArgCount)
 	{
@@ -1553,8 +1574,8 @@ bool VM::Invoke(VMValue receiver, VMValue method, int argCount, const uint8_t* i
 
 bool VM::InvokeFromClass(VMValue classValue, VMValue receiver, const std::string& methodName, int argCount, uint32_t cacheIndex, const uint8_t* instructionIp)
 {
-	Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(classValue.value);
-	Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(receiver.value);
+	Compiler::VMClassValue* klass = static_cast<Compiler::VMClassValue*>(classValue.object);
+	Compiler::VMInstanceValue* instance = static_cast<Compiler::VMInstanceValue*>(receiver.object);
 	InlineCache& cache = frames[frameCount - 1].GetChunk()->GetInlineCache(cacheIndex);
 
 	uint32_t slot = Compiler::VMClassValue::INVALID_SLOT;
@@ -1569,9 +1590,9 @@ bool VM::InvokeFromClass(VMValue classValue, VMValue receiver, const std::string
 	{
 		slot = klass->GetSlot(methodName);
 		method = klass->FindMethod(methodName);
-		if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.value)
+		if (slot == Compiler::VMClassValue::INVALID_SLOT && !method.object)
 		{
-			if (classValue.value == instance->classValue.value)
+			if (classValue.object == instance->classValue.object)
 			{
 				RuntimeError(instructionIp, "Undefined method '%s'.", methodName.c_str());
 			}
@@ -1585,13 +1606,13 @@ bool VM::InvokeFromClass(VMValue classValue, VMValue receiver, const std::string
 	}
 
 	VMValue callee;
-	if (classValue.value == instance->classValue.value && slot != Compiler::VMClassValue::INVALID_SLOT)
+	if (classValue.object == instance->classValue.object && slot != Compiler::VMClassValue::INVALID_SLOT)
 	{
 		callee = instance->GetField(slot);
 	}
-	if (!callee.value && !method.value)
+	if (!callee.IsValid() && !method.IsValid())
 	{
-		if (classValue.value == instance->classValue.value)
+		if (classValue.object == instance->classValue.object)
 		{
 			RuntimeError(instructionIp, "Undefined method '%s'.", methodName.c_str());
 		}
@@ -1602,7 +1623,7 @@ bool VM::InvokeFromClass(VMValue classValue, VMValue receiver, const std::string
 		return false;
 	}
 
-	return callee.value
+	return callee.IsValid()
 		? Call(callee, argCount, instructionIp)
 		: Invoke(receiver, method, argCount, instructionIp);
 }
@@ -1629,7 +1650,7 @@ InterpretResult VM::Interpret(const char* source)
 	Compiler compiler;
 
 	VMValue compiledFunction = compiler.Compile(source);
-	if (compiledFunction.value == nullptr)
+	if (compiledFunction.type != TYPE_CALLABLE || compiledFunction.object == nullptr)
 	{
 		return INTERPRET_COMPILE_ERROR;
 	}
@@ -1657,14 +1678,14 @@ InterpretResult VM::Interpret(const char* source)
 
 void VM::MarkValue(VMValue value)
 {
-	if (value.value == nullptr || value.value->markedValue == currentMarkValue)
+	if (!value.IsObject() || value.object == nullptr || value.object->markedValue == currentMarkValue)
 	{
 		return;
 	}
 #ifdef DEBUG_LOG_GC
-	printf("  Mark object %p of type %s\n", (void*)value.value, ValueTypeToString(value.value->type));
+	printf("  Mark object %p of type %s\n", (void*)value.object, ValueTypeToString(value.object->type));
 #endif
-	value.value->markedValue = currentMarkValue;
+	value.object->markedValue = currentMarkValue;
 	if (grayStackCount + 1 > grayStackCapacity)
 	{
 		size_t oldCapacity = grayStackCapacity;
@@ -1672,7 +1693,7 @@ void VM::MarkValue(VMValue value)
 		grayStack = GROW_ARRAY(Value*, grayStack, oldCapacity, newCapacity);
 		grayStackCapacity = newCapacity;
 	}
-	grayStack[grayStackCount++] = value.value;
+	grayStack[grayStackCount++] = value.object;
 }
 
 void VM::TraceReferences()

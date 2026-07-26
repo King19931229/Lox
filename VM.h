@@ -23,11 +23,11 @@ struct CallFrame
 
 	inline Chunk* GetChunk()
 	{
-		return static_cast<Compiler::VMClosureValue*>(closure.value)->function.GetChunk();
+		return static_cast<Compiler::VMClosureValue*>(closure.object)->function.GetChunk();
 	}
 	inline std::vector<VMValue>& GetUpvalues()
 	{
-		return static_cast<Compiler::VMClosureValue*>(closure.value)->upvalues;
+		return static_cast<Compiler::VMClosureValue*>(closure.object)->upvalues;
 	}
 };
 
@@ -112,9 +112,9 @@ protected:
 	// Resolve a global variable slot by name, returning false if it doesn't exist. Returns true on success.
 	bool ResolveExistingGlobalSlot(VMValue nameValue, size_t& outSlot, const uint8_t* instructionIp = nullptr);
 
-	bool IsNumber(VMValue value);
-	bool IsFalsey(VMValue value);
-	bool IsString(VMValue value);
+	static bool IsNumber(VMValue value);
+	static bool IsFalsey(VMValue value);
+	static bool IsString(VMValue value);
 
 	void RuntimeError(const char* format, ...);
 	void RuntimeError(const uint8_t* instructionIp, const char* format, ...);

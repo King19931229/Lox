@@ -21,8 +21,8 @@ protected:
 	size_t column = 1;
 	size_t startColumn = 1;
 	bool IsAtEnd();
-	bool IsDigit(char c);
-	bool IsAlpha(char c);
+	static bool IsDigit(char c);
+	static bool IsAlpha(char c);
 	char Advance();
 	char Peek();
 	char PeekNext();

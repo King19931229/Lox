@@ -124,7 +124,7 @@ public:
 		}
 		int Arity() const override
 		{
-			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.value);
+			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.object);
 			return functionValue->Arity();
 		}
 		Chunk* GetChunk() const override
@@ -134,7 +134,7 @@ public:
 		void Blacken(VM& vm) override;
 		operator std::string() const override
 		{
-			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.value);
+			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.object);
 			return "<closure " + functionValue->operator std::string() + ">";
 		}
 		VMFunctionType GetType() const override { return VM_FUNC_CLOSURE; }
@@ -152,7 +152,7 @@ public:
 		explicit VMClassValue(const std::string& inName)
 			: name(inName)
 			, slotNum(0)
-			, superClass(VMValue(nullptr))
+			, superClass()
 		{
 			this->type = TYPE_CLASS;
 		}
@@ -176,7 +176,7 @@ public:
 		}
 		virtual operator std::string() const override
 		{
-			VMClassValue* classObj = static_cast<VMClassValue*>(classValue.value);
+			VMClassValue* classObj = static_cast<VMClassValue*>(classValue.object);
 			return "<instance of " + classObj->name + ">";
 		}
 		virtual size_t Size() const override
@@ -203,9 +203,9 @@ public:
 		}
 		virtual operator std::string() const override
 		{
-			VMClosureValue* closure = static_cast<VMClosureValue*>(method.value);
-			VMInstanceValue* instance = static_cast<VMInstanceValue*>(receiver.value);
-			return "<bound method " + closure->function.value->operator std::string() + " of " + instance->operator std::string() + ">";
+			VMClosureValue* closure = static_cast<VMClosureValue*>(method.object);
+			VMInstanceValue* instance = static_cast<VMInstanceValue*>(receiver.object);
+			return "<bound method " + closure->function.object->operator std::string() + " of " + instance->operator std::string() + ">";
 		}
 		virtual size_t Size() const override
 		{
@@ -213,7 +213,7 @@ public:
 		}
 		virtual int Arity() const override
 		{
-			VMClosureValue* closure = static_cast<VMClosureValue*>(method.value);
+			VMClosureValue* closure = static_cast<VMClosureValue*>(method.object);
 			return closure->Arity();
 		}
 		void Blacken(VM& vm) override;
@@ -372,7 +372,7 @@ private:
 	bool Check(TokenType type);
 	bool Match(TokenType type);
 	void Consume(TokenType type, const char* message);
-	ParseRule* GetRule(TokenType type);
+	static ParseRule* GetRule(TokenType type);
 
 	// --- Code Generation ---
 	void EmitByte(uint8_t byte);

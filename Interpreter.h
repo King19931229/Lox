@@ -14,8 +14,8 @@ public:
 	ValuePtr InterpretExpr(const ExprPtr& expr);
 	void Interpret(const std::vector<StatPtr>& statements);
 	void Resolve(const Expr* expr, int depth);
-	std::string Stringify(ValuePtr value);
-	bool Trueify(ValuePtr value);
+	static std::string Stringify(ValuePtr value);
+	static bool Trueify(ValuePtr value);
 	void SetResolver(const class Resolver* resolver);
 protected:
 	friend struct LoxLambda;
