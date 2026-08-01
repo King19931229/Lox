@@ -10,6 +10,8 @@ class Compiler
 		TYPE_SCRIPT,
 		TYPE_FUNCTION,
 		TYPE_METHOD,
+		TYPE_GETTER,
+		TYPE_STATIC_METHOD,
 		TYPE_INITIALIZER,
 	};
 protected:
@@ -20,6 +22,7 @@ public:
 
 	VMValue Compile(const char* source);
 	VMValue CompileFunction(FunctionType fnType, const std::string& name);
+	VMValue CompileGetter(const std::string& name);
 
 	enum VMFunctionType
 	{
@@ -35,6 +38,7 @@ public:
 	{
 		virtual int Arity() const = 0;
 		virtual VMFunctionType GetType() const = 0;
+		virtual bool IsGetter() const { return false; }
 		void Blacken(VM& vm) override;
 	};
 
@@ -69,6 +73,7 @@ public:
 		std::string name;
 		int32_t arity = 0;
 		int32_t upvalueCount = 0;
+		bool isGetter = false;
 		Chunk* chunk = nullptr;
 		explicit VMFunctionValue(const std::string& inName, Chunk* inChunk = nullptr)
 			: name(inName)
@@ -88,6 +93,7 @@ public:
 		Chunk* GetChunk() const override { return chunk; }
 		operator std::string() const override { return "<fn " + name + ">"; }
 		VMFunctionType GetType() const override { return VM_FUNC_FUNCTION; }
+		bool IsGetter() const override { return isGetter; }
 		size_t Size() const override { return sizeof(*this) + name.capacity(); }
 	};
 
@@ -132,6 +138,10 @@ public:
 			return function.GetChunk();
 		}
 		void Blacken(VM& vm) override;
+		bool IsGetter() const override
+		{
+			return function.object != nullptr && static_cast<VMFunctionBase*>(function.object)->IsGetter();
+		}
 		operator std::string() const override
 		{
 			VMFunctionBase* functionValue = static_cast<VMFunctionBase*>(function.object);
@@ -147,6 +157,7 @@ public:
 		std::string name;
 		std::unordered_map<std::string, uint32_t> fieldToSlot;
 		std::unordered_map<std::string, VMValue> methods;
+		std::unordered_map<std::string, VMValue> classMethods;
 		uint32_t slotNum;
 		VMValue superClass;
 		explicit VMClassValue(const std::string& inName)
@@ -162,6 +173,7 @@ public:
 		uint32_t GetOrCreateSlot(const std::string& fieldName);
 		VMValue FindDirectMethod(const std::string& methodName) const;
 		VMValue FindMethod(const std::string& methodName) const;
+		VMValue FindClassMethod(const std::string& methodName) const;
 		void Blacken(VM& vm) override;
 	};
 
@@ -218,15 +230,20 @@ public:
 		}
 		void Blacken(VM& vm) override;
 		virtual VMFunctionType GetType() const override { return VM_FUNC_METHOD; }
+		bool IsGetter() const override
+		{
+			return method.object != nullptr && static_cast<VMFunctionBase*>(method.object)->IsGetter();
+		}
 	};
 private:
 	enum Precedence
 	{
 		PREC_NONE,
+		PREC_COMMA,       // ,
 		PREC_ASSIGNMENT,  // =
-		PREC_QUESTION,    // ?:
 		PREC_OR,          // or
 		PREC_AND,         // and
+		PREC_QUESTION,    // ?:
 		PREC_EQUALITY,    // == !=
 		PREC_COMPARISON,  // < > <= >=
 		PREC_TERM,        // + -
@@ -329,6 +346,7 @@ private:
 	void FunctionDeclaration();
 	void ClassDeclaration();
 	void Function(FunctionType type, const std::string& name = "");
+	void Getter(const std::string& name);
 	void PrintStatement();
 	void ExpressionStatement();
 	void IfStatement();
@@ -339,6 +357,7 @@ private:
 	void ForStatement();
 	void ReturnStatement();
 	void Expression();
+	void Assignment();
 	void BeginScope();
 	void Block();
 	void Method();
@@ -350,6 +369,7 @@ private:
 	// --- Grammar Rules ---
 	void Number(bool canAssign);
 	void Literal(bool canAssign);
+	void Lambda(bool);
 	void String(bool canAssign);
 	void Grouping(bool canAssign);
 	void Unary(bool canAssign);
@@ -360,6 +380,7 @@ private:
 	void Or(bool);
 	void Variable(bool);
 	void Call(bool);
+	void Comma(bool);
 	void Dot(bool canAssign);
 	void RootDot(bool canAssign);
 	void Bracket(bool canAssign);
@@ -387,6 +408,7 @@ private:
 	void EmitPropertyAccess(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint32_t cacheIndex);
 	void EmitInvoke(uint8_t op, uint8_t opLong, uint32_t nameConstant, uint8_t argCount, uint32_t cacheIndex);
 	void EmitRootInvoke(uint32_t nameConstant, uint8_t argCount);
+	void EmitClosure(const Compiler& compiler);
 	Chunk* CurrentChunk();
 
 	// --- Variable Helpers ---

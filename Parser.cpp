@@ -100,11 +100,11 @@ ExprPtr Parser::Or()
 
 ExprPtr Parser::And()
 {
-	ExprPtr expr = Comma();
+	ExprPtr expr = Ternary();
 	while (Match(TokenType::AND))
 	{
 		Token andOp = Previous();
-		ExprPtr otherExpr = Comma();
+		ExprPtr otherExpr = Ternary();
 		expr = Logical::Create(expr, andOp, otherExpr);
 	}
 	return expr;
@@ -112,12 +112,12 @@ ExprPtr Parser::And()
 
 ExprPtr Parser::Comma()
 {
-	ExprPtr expr = Ternary();
+	ExprPtr expr = Assignment();
 
 	while (Match(TokenType::COMMA))
 	{
 		Token op = Previous();
-		ExprPtr right = Ternary();
+		ExprPtr right = Assignment();
 		expr = Binary::Create(expr, op, right);
 	}
 
@@ -233,24 +233,6 @@ ExprPtr Parser::Unary()
 	return Call();
 }
 
-std::vector<ExprPtr> Parser::FinishArguments(ExprPtr expr)
-{
-	if (Binary* binary = dynamic_cast<Binary*>(expr.get()))
-	{
-		if (binary->op.type == TokenType::COMMA)
-		{
-			std::vector<ExprPtr> args;
-			auto leftArgs = FinishArguments(binary->left);
-			args.insert(args.end(), leftArgs.begin(), leftArgs.end());
-			auto rightArgs = FinishArguments(binary->right);
-			args.insert(args.end(), rightArgs.begin(), rightArgs.end());
-			return args;
-			return args;
-		}
-	}
-	return { expr };
-}
-
 ExprPtr Parser::FinishCall(const ExprPtr& callee)
 {
 	std::vector<ExprPtr> arguments;
@@ -258,8 +240,7 @@ ExprPtr Parser::FinishCall(const ExprPtr& callee)
 	{
 		do
 		{
-			std::vector<ExprPtr> newArgs = FinishArguments(Expression());
-			arguments.insert(arguments.end(), newArgs.begin(), newArgs.end());
+			arguments.push_back(Assignment());
 			if (arguments.size() >= 255)
 			{
 				Error(Peek(), "Can't have more than 255 arguments.");
@@ -300,7 +281,7 @@ ExprPtr Parser::Call()
 
 ExprPtr Parser::Expression()
 {
-	return Assignment();
+	return Comma();
 }
 
 ExprPtr Parser::Primary()
@@ -439,7 +420,7 @@ StatPtr Parser::VarDeclaration()
 	ExprPtr initializer = nullptr;
 	if (Match(TokenType::EQUAL))
 	{
-		initializer = Assignment();
+		initializer = Expression();
 	}
 	Consume(TokenType::SEMICOLON, "Expect ';' after '" + Previous().lexeme + "'.");
 	return Var::Create(name, initializer);
@@ -520,7 +501,7 @@ StatPtr Parser::ClassDeclaration()
 
 StatPtr Parser::PrintStatement()
 {
-	ExprPtr expr = Assignment();
+	ExprPtr expr = Expression();
 	Consume(TokenType::SEMICOLON, "Expect ';' after '" + Previous().lexeme + "'.");
 	return Print::Create(expr);
 }
@@ -569,7 +550,7 @@ StatPtr Parser::ReturnStatement()
 
 StatPtr Parser::ExpressionStatment()
 {
-	ExprPtr expr = Assignment();
+	ExprPtr expr = Expression();
 	Consume(TokenType::SEMICOLON, "Expect ';' after '" + Previous().lexeme + "'.");
 	return Expression::Create(expr);
 }

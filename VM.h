@@ -146,6 +146,7 @@ public:
 	// Call a function value with given argument count. Returns true on success.
 	bool Call(VMValue callee, int argCount, const uint8_t* instructionIp = nullptr);
 	bool Invoke(VMValue receiver, VMValue method, int argCount, const uint8_t* instructionIp = nullptr);
+	bool InvokeClassMethod(VMValue classValue, const std::string& methodName, int argCount, const uint8_t* instructionIp = nullptr);
 	bool InvokeFromClass(VMValue classValue, VMValue receiver, const std::string& methodName, int argCount, uint32_t cacheIndex, const uint8_t* instructionIp = nullptr);
 	InterpretResult Interpret(VMValue function);
 	InterpretResult Interpret(const char* source);

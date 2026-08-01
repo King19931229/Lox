@@ -461,6 +461,10 @@ int32_t Chunk::DisassembleInstruction(int32_t offset, int32_t indent)
 			return ConstantInstruction("OP_METHOD", offset);
 		case OP_METHOD_LONG:
 			return ConstantLongInstruction("OP_METHOD_LONG", offset);
+		case OP_CLASS_METHOD:
+			return ConstantInstruction("OP_CLASS_METHOD", offset);
+		case OP_CLASS_METHOD_LONG:
+			return ConstantLongInstruction("OP_CLASS_METHOD_LONG", offset);
 		case OP_INVOKE:
 			return InvokeInstruction("OP_INVOKE", offset);
 		case OP_INVOKE_LONG:

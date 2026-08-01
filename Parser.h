@@ -56,7 +56,6 @@ protected:
 		return false;
 	}
 
-	std::vector<ExprPtr> FinishArguments(ExprPtr expr);
 	ExprPtr FinishCall(const ExprPtr& callee);
 
 	ExprPtr Expression();

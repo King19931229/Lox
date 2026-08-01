@@ -270,28 +270,9 @@ int main(int argc, char* argv[])
 	VM& vm = VM::GetInstance();
 	vm.Init();
 	vm.Interpret(R"(
-	class Boo
-	{
-		fun func(v0, v1)
-		{
-			// return v0 * v1;
-			return inner(v0, v1);
-		}
-	}
-	class Foo < Boo
-	{
-		fun init(v)
-		{
-			this.v = v;
-		}
-		fun func(v0, v1)
-		{
-			return v0 + v1 + 1 + this.v;
-		}
-	}
-	var foo = Foo(5);
-	foo.v = 3;
-	print foo..func(1, 2);
+	var a = fun(a,b) { return a + b; };
+	var b = a(2,3);
+	print(b);
 	)");
 	vm.Free();
 #endif

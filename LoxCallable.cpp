@@ -97,11 +97,8 @@ LoxNilFunction::operator std::string() const
 
 ValuePtr LoxNilFunction::Call(class Interpreter* interpreter, const std::vector<ValuePtr>& arguments)
 {
-	if (arguments.size() != static_cast<size_t>(arity))
-	{
-		Lox::GetInstance().RuntimeError("Expected %d arguments but got %d.", arity, static_cast<int>(arguments.size()));
-	}
-	return NilValue::Create();
+	Lox::GetInstance().RuntimeError("inner() can only be used during a root invocation.");
+	return ErrorValue::Create("inner() can only be used during a root invocation.");
 }
 
 LoxGetter::LoxGetter(const Getter* inDeclaration, EnvironmentPtr inClosure)

@@ -487,6 +487,10 @@ void TestUnit::RunFunctionInterpreterTest()
 		{ "fun count(n) { if (n > 1) count(n - 1); print n; } count(3);", "1\n2\n3\n" },
 		// Function with return value
 		{ "fun add(x, y) { return x + y; } print add(2, 3);", "5\n" },
+		// Comma operator and argument separators are parsed at different grammar levels.
+		{ "fun show(a, b) { print a; print b; } show(1, 2);", "1\n2\n" },
+		{ "fun show(a) { print a; } show((1, 2));", "2\n" },
+		{ "print 1, 2;", "2\n" },
 		// Function without return (should return nil)
 		{ "fun noReturn() { print \"no return\"; } var result = noReturn(); print result;", "no return\nnil\n" },
 		// recursive factorial function
@@ -578,7 +582,7 @@ void TestUnit::RunClassInterpreterTest()
 		//		3) middle class doesn't implement m, lower level does -> expect Base then Lower with arg
 		{ "class A{ m(s) { print \"A \" + s; inner(s); } } class B < A{ } class C < B{ m(s) { print \"C \" + s; } } var c = C(); c..m(\"z\");", "A z\nC z\n" },
 		//		4) derived doesn't override, only base exists -> expect only Base with arg
-		{ "class A{ m(s) { print \"A \" + s; inner(s); } } class B < A{ } var b2 = B(); b2..m(\"w\");", "A w\n" },
+		{ "class A{ m(s) { print \"A \" + s; inner(s); } } class B < A{ } var b2 = B(); b2..m(\"w\");", "A w\nRuntimeError: inner() can only be used during a root invocation.\n" },
 	};
 
 #ifdef _WIN32
@@ -682,6 +686,19 @@ void TestUnit::RunVMTest()
 		{ "fun makePrinter() { fun inner() { return \"returned\"; } return inner; } var printer = makePrinter(); print printer();", "returned\n" },
 		{ "fun left() { print \"left\"; return 2; } fun right() { print \"right\"; return 3; } fun add(a, b) { return a + b; } print add(left(), right());", "left\nright\n5\n" },
 
+		// Lambda and closure alignment.
+		{ "var add = fun(a, b) { return a + b; }; print add(2, 3);", "5\n" },
+		{ "fun apply(fn, value) { return fn(value); } var factor = 3; var multiply = fun(value) { return value * factor; }; print apply(multiply, 4);", "12\n" },
+		{ "fun makeAdder(n) { return fun(value) { return n + value; }; } var add5 = makeAdder(5); print add5(7);", "12\n" },
+
+		// Comma operator versus function argument separators and assignment precedence.
+		{ "fun combine(a, b) { return a * 10 + b; } print combine(2, 3); print (1, 2);", "23\n2\n" },
+		{ "var value = 0; print value = 1, 2; print value;", "2\n1\n" },
+
+		// Getter alignment: property access invokes the getter with the bound receiver.
+		{ "class Counter { fun next { this.value = this.value + 1; return this.value; } } var c = Counter(); c.value = 0; print c.next; print c.next;", "1\n2\n" },
+		{ "class Base { fun value { return 7; } } class Derived < Base { } print Derived().value;", "7\n" },
+
 		// Classes, methods, initializers, and bound-method calls.
 		{ "class Greeter { fun greet() { print \"hello\"; } } var g = Greeter(); g.greet();", "hello\n" },
 		{ "class Calculator { fun add(a, b) { return a + b; } } var c = Calculator(); print c.add(2, 3);", "5\n" },
@@ -715,6 +732,11 @@ void TestUnit::RunVMTest()
 		{ "class Counter { fun makeGetter() { fun get() { return this.value; } return get; } } var c = Counter(); c.value = 9; var get = c.makeGetter(); print get();", "9\n" },
 		{ "class Walker { fun down(n) { if (n > 0) { print n; this.down(n - 1); } } } Walker().down(3);", "3\n2\n1\n" },
 		{ "class Point { fun init(x) { this.x = x; } fun move(delta) { this.x = this.x + delta; return this; } } var p = Point(1); print p.move(4).x;", "5\n" },
+
+		// Static class methods: declaration, direct invocation, nested invocation, and extraction.
+		{ "class Math { class add(a, b) { return a + b; } } print Math.add(5, 7);", "12\n" },
+		{ "class Math { class add(a, b) { return a + b; } class addAndMultiply(x, y, z) { return Math.add(x, y) * z; } } print Math.addAndMultiply(2, 3, 4);", "20\n" },
+		{ "class Math { class add(a, b) { return a + b; } } var add = Math.add; print add(2, 3);", "5\n" },
 		{ "class Empty { } Empty(1);", "Expected 0 arguments but got 1.", INTERPRET_RUNTIME_ERROR },
 		{ "class NeedsArgument { fun init(value) { this.value = value; } } NeedsArgument();", "Expected 1 arguments but got 0.", INTERPRET_RUNTIME_ERROR },
 		{ "class Greeter { fun greet() { } } var g = Greeter(); g.greet(1);", "Expected 0 arguments but got 1.", INTERPRET_RUNTIME_ERROR },

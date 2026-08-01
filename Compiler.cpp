@@ -117,6 +117,16 @@ VMValue Compiler::VMClassValue::FindMethod(const std::string& methodName) const
 	return VMValue();
 }
 
+VMValue Compiler::VMClassValue::FindClassMethod(const std::string& methodName) const
+{
+	auto it = classMethods.find(methodName);
+	if (it != classMethods.end())
+	{
+		return it->second;
+	}
+	return VMValue();
+}
+
 void Compiler::VMInstanceValue::SetField(uint32_t slotIndex, VMValue value)
 {
 	auto NextPowOfTwo = [](uint32_t value)
@@ -150,6 +160,10 @@ void Compiler::VMClassValue::Blacken(VM& vm)
 	{
 		vm.MarkValue(method.second);
 	}
+	for (const auto& method : classMethods)
+	{
+		vm.MarkValue(method.second);
+	}
 }
 
 void Compiler::BoundMethodValue::Blacken(VM& vm)
@@ -176,7 +190,9 @@ void Compiler::Init(FunctionType inType, const std::string& name)
 	}
 	else
 	{
-		function = VM::Create(new Compiler::VMFunctionValue(name, compilingChunk));
+		VMFunctionValue* functionValue = new Compiler::VMFunctionValue(name, compilingChunk);
+		functionValue->isGetter = inType == TYPE_GETTER;
+		function = VM::Create(functionValue);
 	}
 	VM::GetInstance().PushCompilerRoot(this);
 	locals.clear();
@@ -186,7 +202,7 @@ void Compiler::Init(FunctionType inType, const std::string& name)
 	// The first local slot is reserved for internal use
 	Local local;
 	local.depth = 0;
-	if (inType == TYPE_METHOD || inType == TYPE_INITIALIZER)
+	if (inType == TYPE_METHOD || inType == TYPE_INITIALIZER || inType == TYPE_GETTER)
 	{
 		// The first local is always "this" for methods, even if it's not used.
 		local.name.lexeme = "this";
@@ -413,6 +429,26 @@ VMValue Compiler::CompileFunction(FunctionType fnType, const std::string& name)
 	return !parser.hadError ? fn : VMValue();
 }
 
+void Compiler::EmitClosure(const Compiler& compiler)
+{
+	EmitConstant(compiler.function);
+	EmitByte(OP_CLOSURE);
+	if (compiler.type != TYPE_SCRIPT)
+	{
+		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(compiler.function.object);
+		EmitByte(fnValue->upvalueCount);
+		for (int32_t i = 0; i < fnValue->upvalueCount; i++)
+		{
+			EmitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+			EmitByte(compiler.upvalues[i].index);
+		}
+	}
+	else
+	{
+		EmitByte(0);
+	}
+}
+
 void Compiler::Function(FunctionType fnType, const std::string& name)
 {
 	// The sub-compiler creates its own chunk internally and shares this compiler's
@@ -426,22 +462,40 @@ void Compiler::Function(FunctionType fnType, const std::string& name)
 		return;
 	}
 
-	EmitConstant(fn);
-	EmitByte(OP_CLOSURE);
-	if (fnType != TYPE_SCRIPT)
+	EmitClosure(sub);
+}
+
+VMValue Compiler::CompileGetter(const std::string& name)
+{
+	Init(TYPE_GETTER, name);
+
+	BeginScope();
+
+	VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(function.object);
+
+	Consume(LEFT_BRACE, "Expect '{' before getter body.");
+	Block();
+
+	EndScope();
+
+	fnValue->upvalueCount = (int32_t)upvalues.size();
+
+	VMValue fn = EndCompiler();
+	return !parser.hadError ? fn : VMValue();
+}
+
+void Compiler::Getter(const std::string& name)
+{
+	// The sub-compiler creates its own chunk internally and shares this compiler's
+	// ParseContext so both advance through the same token stream.
+	Compiler sub(this, ctx);
+	VMValue fn = sub.CompileGetter(name);
+	if (fn.object == nullptr)
 	{
-		VMFunctionValue* fnValue = static_cast<VMFunctionValue*>(fn.object);
-		EmitByte(fnValue->upvalueCount);
-		for (int32_t i = 0; i < fnValue->upvalueCount; i++)
-		{
-			EmitByte(sub.upvalues[i].isLocal ? 1 : 0);
-			EmitByte(sub.upvalues[i].index);
-		}
+		// Sub-compiler encountered an error, bail out to avoid dereferencing null.
+		return;
 	}
-	else
-	{
-		EmitByte(0);
-	}
+	EmitClosure(sub);
 }
 
 void Compiler::ClassDeclaration()
@@ -507,22 +561,52 @@ void Compiler::ClassDeclaration()
 
 void Compiler::Method()
 {
-	Consume(FUN, "Expect 'fun' before method name.");
-	Consume(IDENTIFIER, "Except method name.");
-	uint32_t nameConstant = IdentifierConstant(parser.previous);
-	FunctionType fnType = TYPE_METHOD;
-	if (parser.previous.lexeme == "init")
+	bool isStatic = false;
+	if (Check(CLASS))
 	{
-		fnType = TYPE_INITIALIZER;
-	}
-	Function(fnType, parser.previous.lexeme);
-	if (nameConstant <= 0xFF)
-	{
-		EmitBytes(OP_METHOD, nameConstant);
+		Advance();
+		isStatic = true;
 	}
 	else
 	{
-		EmitBytes(OP_METHOD_LONG, (nameConstant >> 16) & 0xFF,
+		Consume(FUN, "Expect 'fun' before method name.");
+	}
+
+	Consume(IDENTIFIER, "Except method name.");
+	uint32_t nameConstant = IdentifierConstant(parser.previous);
+	FunctionType fnType = isStatic ? TYPE_STATIC_METHOD :TYPE_METHOD;
+	if (parser.previous.lexeme == "init")
+	{
+		if (isStatic)
+		{
+			Error("Static methods cannot be initializers.");
+		}
+		else
+		{
+			fnType = TYPE_INITIALIZER;
+		}
+	}
+
+	if (Check(LEFT_PAREN))
+	{
+		Function(fnType, parser.previous.lexeme);
+	}
+	else
+	{
+		if (isStatic)
+		{
+			Error("Static methods cannot be getters.");
+		}
+		Getter(parser.previous.lexeme);
+	}
+
+	if (nameConstant <= 0xFF)
+	{
+		EmitBytes(isStatic ? OP_CLASS_METHOD : OP_METHOD, nameConstant);
+	}
+	else
+	{
+		EmitBytes(isStatic ? OP_CLASS_METHOD_LONG : OP_METHOD_LONG, (nameConstant >> 16) & 0xFF,
 			(nameConstant >> 8) & 0xFF,
 			nameConstant & 0xFF);
 	}
@@ -782,6 +866,11 @@ void Compiler::ExpressionStatement()
 
 void Compiler::Expression()
 {
+	ParsePrecedence(PREC_COMMA);
+}
+
+void Compiler::Assignment()
+{
 	ParsePrecedence(PREC_ASSIGNMENT);
 }
 
@@ -873,8 +962,7 @@ VMValue Compiler::EndCompiler()
 	// The function object is already owned by the VM; return its handle.
 	VMValue result = function;
 	VM::GetInstance().PopCompilerRoot(this);
-	// Clear local references so the destructor doesn't double-free.
-	function = VMValue();
+	// The function owns the chunk now; the compiler no longer owns it.
 	compilingChunk = nullptr;
 
 	return result;
@@ -908,11 +996,20 @@ void Compiler::Literal(bool /*canAssign*/)
 	}
 }
 
+void Compiler::Lambda(bool)
+{
+	Function(TYPE_FUNCTION, "lmbda_" + std::to_string(parser.previous.line) + "_" + std::to_string(parser.previous.column));
+}
+
 void Compiler::This(bool)
 {
 	if (!currentClass)
 	{
 		Error("Can't use 'this' outside of a method.");
+	}
+	else if (type == TYPE_STATIC_METHOD)
+	{
+		Error("Can't use 'this' in a class method.");
 	}
 	Variable(false);
 }
@@ -922,6 +1019,10 @@ void Compiler::Super(bool)
 	if (!currentClass)
 	{
 		Error("Can't use 'super' outside of a class.");
+	}
+	else if (type == TYPE_STATIC_METHOD)
+	{
+		Error("Can't use 'super' in a class method.");
 	}
 	else if (!currentClass->hasSuperclass)
 	{
@@ -1006,19 +1107,20 @@ void Compiler::Trinary(bool)
 {
 	TokenType operatorType = parser.previous.type;
 
+	int32_t thenJump = EmitJump(OP_JUMP_IF_FALSE);
+
 	ParseRule* rule = GetRule(operatorType);
+	EmitByte(OP_POP);
 	ParsePrecedence((Precedence)(rule->precedence));
 
-	switch (operatorType)
-	{
-		case QUESTION: break;
-		default:
-			// Unreachable.
-			break;
-	}
+	int32_t endJump = EmitJump(OP_JUMP);
+	PatchJump(thenJump);
+	EmitByte(OP_POP);
 
 	Consume(COLON, "Expect ':' in trinary operator.");
 	ParsePrecedence((Precedence)(rule->precedence));
+
+	PatchJump(endJump);
 }
 
 void Compiler::Equality(bool)
@@ -1126,7 +1228,7 @@ void Compiler::NamedVariable(const Token& name, bool canAssign)
 			Error("Cannot assign to a final variable.");
 		}
 
-		Expression();
+		Assignment();
 		if (arg <= 0xFF)
 		{
 			EmitBytes(setOp, (uint8_t)arg);
@@ -1168,7 +1270,7 @@ uint8_t Compiler::ArgumentList()
 				return argCount;
 			}
 			argCount += 1;
-			Expression();
+			Assignment();
 		} while (Match(COMMA));
 	}
 	Consume(RIGHT_PAREN, "Expect ')' after arguments.");
@@ -1232,6 +1334,12 @@ void Compiler::EmitRootInvoke(uint32_t nameConstant, uint8_t argCount)
 			(uint8_t)(nameConstant & 0xFF),
 			argCount);
 	}
+}
+
+void Compiler::Comma(bool)
+{
+	EmitByte(OP_POP);
+	Assignment();
 }
 
 void Compiler::Dot(bool canAssign)
@@ -1341,9 +1449,9 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[RIGHT_BRACE]   = { nullptr,             nullptr,            PREC_NONE };
 		rules[LEFT_BRACKET]  = { nullptr,             &Compiler::Bracket, PREC_CALL };
 		rules[RIGHT_BRACKET] = { nullptr,             nullptr,            PREC_NONE };
-		rules[COMMA]         = { nullptr,             nullptr,            PREC_NONE };
+		rules[COMMA]         = { nullptr,             &Compiler::Comma,   PREC_COMMA };
 		rules[DOT]           = { nullptr,             &Compiler::Dot,     PREC_CALL };
-		rules[DOTDOT]        = { nullptr,             &Compiler::RootDot,  PREC_CALL };
+		rules[DOTDOT]        = { nullptr,             &Compiler::RootDot, PREC_CALL };
 		rules[MINUS]         = { &Compiler::Unary,    &Compiler::Binary,  PREC_TERM };
 		rules[PLUS]          = { nullptr,             &Compiler::Binary,  PREC_TERM };
 		rules[SEMICOLON]     = { nullptr,             nullptr,            PREC_NONE };
@@ -1366,7 +1474,7 @@ Compiler::ParseRule* Compiler::GetRule(TokenType type)
 		rules[CLASS]         = { nullptr,             nullptr,            PREC_NONE };
 		rules[ELSE]          = { nullptr,             nullptr,            PREC_NONE };
 		rules[FALSE]         = { &Compiler::Literal,  nullptr,            PREC_NONE };
-		rules[FUN]           = { nullptr,             nullptr,            PREC_NONE };
+		rules[FUN]           = { &Compiler::Lambda,  nullptr,             PREC_NONE };
 		rules[FOR]           = { nullptr,             nullptr,            PREC_NONE };
 		rules[IF]            = { nullptr,             nullptr,            PREC_NONE };
 		rules[NIL]           = { &Compiler::Literal,  nullptr,            PREC_NONE };
@@ -1587,6 +1695,7 @@ int32_t Compiler::EmitJump(uint8_t instruction)
 
 void Compiler::PatchJump(int32_t offset)
 {
+	// -2 to adjust for offset of read jump offset after the jump instruction.
 	int32_t jump = CurrentChunk()->GetSize() - offset - 2;
 	if (jump > 0xFFFFFF)
 	{
